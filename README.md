@@ -13,6 +13,8 @@ go get -u golang.org/x/crypto/bcrypt
 go get github.com/golang-jwt/jwt/v5
 go get -u github.com/go-redis/redis/v8
 go get github.com/gin-contrib/cors
+
+go mod tidy
 ```
 ```bash
 docker pull postgres:15.14-alpine3.21
@@ -37,6 +39,8 @@ docker run -d \
 ### Front End (TypeScript+Vite+React)
 ```bash
 npm create vite@latest frontend
-
+cd frontend
+npm run build
+npm run dev
 
 ```
