@@ -60,3 +60,46 @@ npm run dev
 ![](static/login.png)
 
 ![](static/dashboard.png)
+
+
+## FinGOAT Functional TODO List
+
+| Name | Task | Status |
+|------|------|---------|
+| PostgreSQL & Redis Containers | Database and cache services via Docker | ✅ Completed |
+| Go Backend Scaffold | Gin + GORM + Viper basic setup | ✅ Completed |
+| React Frontend Scaffold | Vite + TypeScript project initialized | ✅ Completed |
+| Environment Config | `.env` and Viper-based configuration management | ✅ Completed |
+| Authentication Layer | JWT-based auth with Casbin RBAC integration | ⚙️ In Progress |
+| API Structure | REST/gRPC routing, middleware, error handling | ⚙️ In Progress |
+| Message Queue | Implement Redis Stream for event publishing/subscription | ⚙️ In Progress  |
+| Schema Design | Define tables for users, assets, signals, portfolios, and events | ⚙️ In Progress  |
+| Data Access Layer | Repositories for CRUD operations via GORM | ⚙️ In Progress |
+| Logging & Monitoring | Basic structured logging, extendable to OpenTelemetry | ☐ Pending |
+| MCP Core | Event dispatcher coordinating Fundamental, Macro, Quant agents | ☐ Pending |
+| Fundamental Agent | Parse earnings, balance sheets, and valuation metrics | ☐ Pending |
+| Macro Agent | Analyze macroeconomic variables and policy signals | ☐ Pending |
+| Quant Agent | Compute statistical and sentiment-based indicators | ☐ Pending |
+| Agent Aggregator | Combine multi-agent results via confidence/voting | ☐ Pending |
+| Prompt Templates | Define meta-prompts for agent coordination and reasoning | ☐ Pending |
+| Evaluation Logger | Store agent outputs and prompt-response pairs for analysis | ☐ Pending |
+| MVO Optimizer | Implement mean–variance optimization (µᵀw − λwᵀΣw) | ☐ Pending |
+| Risk Personalization | Adjustable risk aversion parameter per user | ☐ Pending |
+| Backtesting Engine | Simulate rebalancing and evaluate portfolio performance | ☐ Pending |
+| Transaction Cost Model | (Future) include slippage and cost in optimization | ☐ Future Feature |
+| Event Source Detection | Detect volatility spikes, macro news, and user-defined triggers | ☐ Pending |
+| Event Dispatch | Push events through Redis Stream to MCP and agents | ☐ Pending |
+| Real-Time Stream | WebSocket/SSE to deliver updates to frontend dashboard | ☐ Pending |
+| Auth Pages | Login, register, password reset with backend JWT link | ⚙️ In Progress |
+| Dashboard | Show portfolio summary, agent outputs, and alerts | ☐ Pending |
+| Watchlist | Add/remove stocks and monitor live price updates | ☐ Pending |
+| Portfolio Visualization | Charts for allocation, performance, and risk metrics | ☐ Pending |
+| Agent Rationales UI | Explain reasoning and confidence of each agent | ☐ Pending |
+| Notification Center | Event-driven alerts for rebalancing or market signals | ☐ Pending |
+| Settings Panel | User-configurable watchlists and risk preferences | ☐ Pending |
+| Tracing | OpenTelemetry + Jaeger integration | ☐ Pending |
+| Metrics | Prometheus + Grafana monitoring setup | ☐ Pending |
+| Docker Compose | Unified orchestration for backend, agents, DB, Redis, frontend | ⚙️ In Progress  |
+| CI/CD | GitHub Actions for lint, test, and deploy | ☐ Pending |
+| Security Hardening | Input validation, rate limiting, HTTPS-ready | ⚙️ In Progress |
+
