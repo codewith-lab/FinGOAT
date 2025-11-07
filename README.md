@@ -1,4 +1,4 @@
-# FinGOAT
+# FinGOAT: Financial Graph-Orchestrated Agentic Trading
 
 ## Getting Started
 ### Back End (Gin+Gorm+PostgreSQL+Redis+Viper+JWT)
