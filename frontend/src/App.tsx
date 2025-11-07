@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { ChangeEvent, FormEvent, KeyboardEvent, CompositionEvent } from 'react'
+import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
 import './App.css'
 
 type AuthMode = 'login' | 'register'
@@ -270,11 +270,11 @@ function App() {
     }
   }
 
-  const handleCompositionStart = (event: CompositionEvent<HTMLTextAreaElement>) => {
+  const handleCompositionStart = () => {
     setIsComposing(true)
   }
 
-  const handleCompositionEnd = (event: CompositionEvent<HTMLTextAreaElement>) => {
+  const handleCompositionEnd = () => {
     setIsComposing(false)
   }
 
