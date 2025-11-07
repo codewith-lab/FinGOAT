@@ -13,3 +13,8 @@ database:
   timezone: Asia/Shanghai
   maxIdleConns: 10
   maxOpenConns: 100
+
+redis:
+  addr: localhost:6379
+  DB: 0
+  Password: ""
