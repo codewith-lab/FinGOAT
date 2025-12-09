@@ -42,6 +42,16 @@ func InitRouter() *gin.Engine {
 
 		api.POST("/articles/:id/like", controllers.LikeArticle)
 		api.GET("/articles/:id/like", controllers.GetArticleLikes)
+
+		// Trading analysis routes
+		trading := api.Group("/trading")
+		{
+			trading.POST("/analyze", controllers.RequestAnalysis)
+			trading.GET("/analysis/:task_id", controllers.GetAnalysisResult)
+			trading.GET("/analyses", controllers.ListUserAnalyses)
+			trading.GET("/stats", controllers.GetAnalysisStats)
+			trading.GET("/health", controllers.CheckServiceHealth)
+		}
 	}
 
 	return r

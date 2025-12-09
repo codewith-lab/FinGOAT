@@ -4,11 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react'
-import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import './App.css'
+import { TradingAnalysis } from './components/TradingAnalysis'
 
 type AuthMode = 'login' | 'register'
 type View = 'auth' | 'home'
@@ -22,12 +22,7 @@ type Article = {
   createdAt?: string
 }
 
-type ChatMessage = {
-  id: number
-  role: 'user' | 'bot'
-  author: string
-  text: string
-}
+
 
 type ThemeContextValue = {
   theme: Theme
@@ -36,7 +31,7 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue>({
   theme: 'light',
-  toggleTheme: () => {},
+  toggleTheme: () => { },
 })
 
 const ThemeToggleButton = () => {
@@ -117,26 +112,7 @@ const NAV_LINKS = [
   { label: 'History', status: 'TODO' },
 ] as const
 
-const AI_MESSAGES = [
-  {
-    id: 1,
-    role: 'bot' as const,
-    author: 'FG',
-    text: "Hello! I'm FinGOAT, your agentic trading co-pilot. I'm currently tracking S&P 500 futures—what do you want to explore today?",
-  },
-  {
-    id: 2,
-    role: 'user' as const,
-    author: 'ME',
-    text: 'Analyze the recent performance of NVIDIA (NVDA) and suggest a short-term trading strategy.',
-  },
-  {
-    id: 3,
-    role: 'bot' as const,
-    author: 'FG',
-    text: 'Analyzing NVDA... Over the past week NVDA gained 5.2% on strong AI earnings. Momentum is extended (RSI 72), so consider a limit buy near the 5-day moving average with a 5% stop-loss to manage risk.',
-  },
-] as const
+
 
 const DATA_SOURCES = [
   { label: 'Bloomberg Terminal', enabled: true },
@@ -198,24 +174,15 @@ function App() {
       {} as Record<string, boolean>,
     ),
   )
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [...AI_MESSAGES])
-  const [chatInput, setChatInput] = useState('')
-  const chatWindowRef = useRef<HTMLDivElement | null>(null)
   const [expandedArticles, setExpandedArticles] = useState<Record<number, boolean>>({})
   const [articleLikes, setArticleLikes] = useState<Record<number, number>>({})
   const [likingArticle, setLikingArticle] = useState<Record<number, boolean>>({})
-  const [isComposing, setIsComposing] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     localStorage.setItem('fingoat_theme', theme)
   }, [theme])
 
-  useEffect(() => {
-    if (chatWindowRef.current) {
-      chatWindowRef.current.scrollTop = chatWindowRef.current.scrollHeight
-    }
-  }, [chatMessages])
+
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
@@ -256,64 +223,8 @@ function App() {
     setRiskTolerance(Number(event.target.value))
   }
 
-  const handleChatInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    setChatInput(event.target.value)
-  }
-
-  const handleChatInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey && !isComposing) {
-      event.preventDefault()
-      handleSendMessage()
-    }
-    if (event.key === 'Escape') {
-      setChatInput('')
-    }
-  }
-
-  const handleCompositionStart = () => {
-    setIsComposing(true)
-  }
-
-  const handleCompositionEnd = () => {
-    setIsComposing(false)
-  }
-
-  const handleSendMessage = () => {
-    const prompt = chatInput.trim()
-    if (!prompt) return
-
-    const userMessage: ChatMessage = {
-      id: Date.now(),
-      role: 'user',
-      author: 'ME',
-      text: prompt,
-    }
-
-    const response: ChatMessage = {
-      id: Date.now() + 1,
-      role: 'bot',
-      author: 'FG',
-      text: `Noted. I will explore "${prompt}" with ${selectedModel} and a ${
-        RISK_LABELS[riskTolerance] ?? 'Moderate'
-      } risk lens. Expect a summary shortly.`,
-    }
-
-    setChatMessages((prev) => [...prev, userMessage, response])
-    setChatInput('')
-  }
-
-  const handleNewSession = () => {
-    setChatMessages([])
-    setChatInput('')
-  }
-
-  const handleAttachmentTrigger = () => {
-    fileInputRef.current?.click()
-  }
-
-  const handleAttachmentChange = (event: ChangeEvent<HTMLInputElement>) => {
-    // Placeholder: attachments not yet supported
-    event.target.value = ''
+  const loadPreviousAnalyses = () => {
+    // Placeholder - handled by TradingAnalysis component
   }
 
   const toggleArticleBody = (articleId: number) => {
@@ -702,17 +613,15 @@ function App() {
                   <li key={channel.label} className="config-check">
                     <button
                       type="button"
-                      className={`config-row ${
-                        notificationsState[channel.label] ? 'active' : ''
-                      }`}
+                      className={`config-row ${notificationsState[channel.label] ? 'active' : ''
+                        }`}
                       onClick={() => toggleNotification(channel.label)}
                       aria-pressed={notificationsState[channel.label]}
                     >
                       <span>{channel.label}</span>
                       <span
-                        className={`check-pill ${
-                          notificationsState[channel.label] ? 'active' : ''
-                        }`}
+                        className={`check-pill ${notificationsState[channel.label] ? 'active' : ''
+                          }`}
                         aria-hidden="true"
                       />
                     </button>
@@ -740,86 +649,16 @@ function App() {
           <div className="panel-heading">
             <PanelIcon type="chat" />
             <div>
-              <p className="panel-label">AI Assistant</p>
-              <h2>Conversation</h2>
+              <p className="panel-label">Trading Analysis</p>
+              <h2>Stock Analysis</h2>
             </div>
-            <button type="button" className="panel-action" onClick={handleNewSession}>
-              New Session
+            <button type="button" className="panel-action" onClick={loadPreviousAnalyses}>
+              Refresh
             </button>
           </div>
 
-          <div className="panel-body">
-            <div className="chat-window" ref={chatWindowRef}>
-              {chatMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`chat-bubble ${message.role === 'user' ? 'user' : 'bot'}`}
-                >
-                  <div className="chat-avatar">{message.author}</div>
-                  <p>{message.text}</p>
-                </div>
-              ))}
-              {!chatMessages.length && (
-                <div className="chat-status">Start a conversation to see messages here.</div>
-              )}
-            </div>
-
-            <div className="chat-input">
-              <div className="chat-input-wrapper">
-                <div className="chat-input-toolbar">
-                  <button
-                    type="button"
-                    className="attach-btn"
-                    onClick={handleAttachmentTrigger}
-                    aria-label="Add attachment"
-                  >
-                    <svg viewBox="0 0 24 24" role="presentation">
-                      <circle cx="12" cy="12" r="8" />
-                      <path d="M12 8v8M8 12h8" strokeLinecap="round" />
-                    </svg>
-                    <span className="tooltip">Add attachment</span>
-                  </button>
-                  <span className="chat-input-tip">Shift + Enter for new line</span>
-                </div>
-                <textarea
-                  placeholder="Message FinGOAT..."
-                  value={chatInput}
-                  rows={1}
-                  onChange={handleChatInputChange}
-                  onKeyDown={handleChatInputKeyDown}
-                  onCompositionStart={handleCompositionStart}
-                  onCompositionEnd={handleCompositionEnd}
-                />
-                <div className="chat-input-hints">
-                  <span>Esc clears draft</span>
-                </div>
-              </div>
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="chat-file-input"
-                onChange={handleAttachmentChange}
-              />
-              <button
-                type="button"
-                className="send-btn"
-                onClick={handleSendMessage}
-                disabled={!chatInput.trim()}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  role="presentation"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M4 12h14" />
-                  <path d="m13 6 7 6-7 6" />
-                </svg>
-              </button>
-            </div>
+          <div className="panel-body scrollable">
+            <TradingAnalysis onSessionExpired={resetSession} />
           </div>
         </section>
 

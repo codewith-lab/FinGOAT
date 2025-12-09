@@ -1,0 +1,52 @@
+# LangChain & AI Frameworks
+langchain>=1.0.0
+langchain-openai>=0.3.23
+langchain-experimental>=0.3.4
+langchain-anthropic>=0.3.15
+langchain-google-genai>=2.1.5
+langgraph>=0.4.8
+deepagents
+
+# Environment & Configuration
+python-dotenv
+
+# FastAPI & Web Service
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# TradingAgents Core Dependencies
+typing-extensions>=4.14.0
+pandas>=2.3.0
+yfinance>=0.2.63
+stockstats>=0.6.5
+pytz>=2025.2
+requests>=2.32.4
+tqdm>=4.67.1
+
+# Data Providers & Financial APIs
+eodhd>=1.0.32
+finnhub-python>=2.4.23
+akshare>=1.16.98
+tushare>=1.4.21
+
+# News & Social Media
+feedparser>=6.0.11
+praw>=7.8.1
+parsel>=1.10.0
+
+# Backtest & Trading
+backtrader>=1.9.78.123
+
+# Storage & Cache
+chromadb>=1.0.12
+redis>=6.2.0
+
+# CLI & UI
+chainlit>=2.5.5
+rich>=14.0.0
+questionary>=2.1.0
+
+# Utilities
+setuptools>=80.9.0
+python-multipart

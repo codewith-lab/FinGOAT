@@ -14,7 +14,9 @@ import (
 
 func main() {
 	config.InitConfig()
-	// fmt.Println(config.AppConfig)
+
+	// Run database migrations
+	config.MigrateDB()
 
 	r := router.InitRouter()
 	port := config.AppConfig.App.Port
