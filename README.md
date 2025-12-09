@@ -7,6 +7,14 @@ The stack includes a Go backend (Gin + GORM + PostgreSQL + Redis) and a TypeScri
 
 ## Getting Started
 
+### Quick Start
+
+```bash
+git clone https://github.com/JerryLinyx/FinGOAT.git
+cd FinGOAT
+git submodule update --init --recursive
+```
+
 ### Backend Setup (Gin+GORM+PostgreSQL+Redis+Viper+JWT+Docker)
 
 #### Install dependencies
@@ -56,6 +64,54 @@ npm run build
 npm run dev
 ```
 
+### Agents Setup (LangChain+LangGraph+FastAPI)
+
+1) Create Python env and install deps
+```bash
+cd langchain-v1
+python3 -m venv .venv
+source .venv/bin/activate
+
+# if needed
+conda deactivate
+
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+2) Configure API keys and service settings
+```bash
+cp .env.trading .env
+# set OPENAI_API_KEY and ALPHA_VANTAGE_API_KEY (Or other apis)
+# adjust TRADING_SERVICE_PORT / CORS_ORIGINS if needed
+```
+
+3) Run the FastAPI microservice
+```bash
+# dev mode (auto reload logs to console)
+python trading_service.py
+
+# production-style
+uvicorn trading_service:app --host 0.0.0.0 --port 8001 --workers 4
+```
+Service docs live at http://localhost:8001/docs and health at `/health`.
+
+4) Sample request to trigger analysis
+```bash
+curl -X POST http://localhost:8001/api/v1/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+        "ticker": "NVDA",
+        "date": "2024-05-10",
+        "llm_config": {
+          "deep_think_llm": "gpt-4o-mini",
+          "quick_think_llm": "gpt-4o-mini",
+          "max_debate_rounds": 1
+        }
+      }'
+```
+The response returns a `task_id`; poll `/api/v1/analysis/{task_id}` for the result.
+
 #### Screenshots
 ![](static/login.png)
 
@@ -102,4 +158,3 @@ npm run dev
 | Docker Compose | Unified orchestration for backend, agents, DB, Redis, frontend | ⚙️ In Progress  |
 | CI/CD | GitHub Actions for lint, test, and deploy | ☐ Pending |
 | Security Hardening | Input validation, rate limiting, HTTPS-ready | ⚙️ In Progress |
-
