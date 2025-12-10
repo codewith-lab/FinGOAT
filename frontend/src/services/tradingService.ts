@@ -1,6 +1,7 @@
 // Trading Analysis API Service
 
-const API_BASE_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 'http://localhost:3000'
+const rawApiUrl = import.meta.env.VITE_API_URL
+const API_BASE_URL = rawApiUrl ? rawApiUrl.replace(/\/$/, '') : ''
 const TOKEN_STORAGE_KEY = 'fingoat_token'
 
 export interface AnalysisRequest {

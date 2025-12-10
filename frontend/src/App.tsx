@@ -20,6 +20,10 @@ type Article = {
   content: string
   preview: string
   createdAt?: string
+  publishedAt?: string
+  source?: string
+  sourceURL?: string
+  link?: string
 }
 
 
@@ -96,8 +100,8 @@ const PanelIcon = ({ type }: { type: 'config' | 'chat' | 'news' }) => {
 }
 
 const TOKEN_STORAGE_KEY = 'fingoat_token'
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 'http://localhost:3000'
+const rawApiUrl = import.meta.env.VITE_API_URL
+const API_BASE_URL = rawApiUrl ? rawApiUrl.replace(/\/$/, '') : ''
 
 const initialForm = {
   username: '',
@@ -287,7 +291,9 @@ function App() {
   )
 
   const fetchArticles = useCallback(
-    async (signal?: AbortSignal) => {
+    async (options?: { signal?: AbortSignal; refresh?: boolean }) => {
+      const signal = options?.signal
+      const shouldRefresh = options?.refresh
       const token = localStorage.getItem(TOKEN_STORAGE_KEY)
       if (!token) {
         resetSession()
@@ -297,6 +303,19 @@ function App() {
       setArticlesLoading(true)
       setArticlesError('')
       try {
+        if (shouldRefresh) {
+          await fetch(`${API_BASE_URL}/api/articles/refresh`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: token,
+            },
+            signal,
+          }).catch((err) => {
+            console.warn('RSS refresh failed', err)
+          })
+        }
+
         const response = await fetch(`${API_BASE_URL}/api/articles`, {
           method: 'GET',
           headers: {
@@ -330,6 +349,10 @@ function App() {
           content: String(item.content ?? item.Content ?? ''),
           preview: String(item.preview ?? item.Preview ?? ''),
           createdAt: String(item.createdAt ?? item.CreatedAt ?? ''),
+          publishedAt: String(item.publishedAt ?? item.PublishedAt ?? ''),
+          source: String(item.source ?? item.Source ?? ''),
+          sourceURL: String(item.sourceURL ?? item.SourceURL ?? ''),
+          link: String(item.link ?? item.Link ?? ''),
         })
 
         const rawItems = Array.isArray(payload)
@@ -360,7 +383,7 @@ function App() {
   useEffect(() => {
     if (view !== 'home') return
     const controller = new AbortController()
-    fetchArticles(controller.signal)
+    fetchArticles({ signal: controller.signal })
     return () => controller.abort()
   }, [view, fetchArticles])
 
@@ -764,7 +787,7 @@ function App() {
             <button
               type="button"
               className="panel-action"
-              onClick={() => fetchArticles()}
+              onClick={() => fetchArticles({ refresh: true })}
               disabled={articlesLoading}
             >
               {articlesLoading ? 'Refreshing…' : 'Refresh'}
@@ -791,8 +814,11 @@ function App() {
                   return (
                     <article key={article.id} className="news-card">
                       <div className="news-head">
-                        <div>
-                          <p className="news-meta">{formatTimestamp(article.createdAt)}</p>
+                      <div>
+                          <p className="news-meta">
+                            {article.source ? `${article.source} • ` : ''}
+                            {formatTimestamp(article.publishedAt || article.createdAt)}
+                          </p>
                           <h3>{article.title}</h3>
                         </div>
                         <button
@@ -806,6 +832,16 @@ function App() {
                       <p className="news-preview">{article.preview}</p>
                       {expanded && <p className="news-content">{article.content}</p>}
                       <div className="news-actions">
+                        {article.link && (
+                          <a
+                            className="news-link"
+                            href={article.link}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open source →
+                          </a>
+                        )}
                         <button
                           type="button"
                           className="like-btn"

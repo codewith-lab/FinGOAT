@@ -938,6 +938,16 @@
   margin-top: 0.75rem;
 }
 
+.news-link {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.news-link:hover {
+  text-decoration: underline;
+}
+
 .like-btn {
   border-radius: 999px;
   border: 1px solid var(--panel-border);

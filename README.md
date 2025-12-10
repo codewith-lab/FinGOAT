@@ -130,9 +130,9 @@ curl -X POST http://localhost:8001/api/v1/analyze \
 The response returns a `task_id`; poll `/api/v1/analysis/{task_id}` for the result.
 
 #### Screenshots
-![](static/login.png)
+![](assets/login.png)
 
-![](static/dashboard.png)
+![](assets/dashboard.png)
 
 
 ## FinGOAT Functional TODO List

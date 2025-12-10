@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -14,7 +15,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const TRADING_SERVICE_URL = "http://localhost:8001"
+const defaultTradingServiceURL = "http://localhost:8001"
+
+var tradingServiceURL = func() string {
+	if v := os.Getenv("TRADING_SERVICE_URL"); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return defaultTradingServiceURL
+}()
 
 var tradingHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
@@ -109,7 +117,7 @@ func RequestAnalysis(c *gin.Context) {
 	// Call Python trading service
 	jsonData, _ := json.Marshal(req)
 	resp, err := tradingHTTPClient.Post(
-		TRADING_SERVICE_URL+"/api/v1/analyze",
+		tradingServiceURL+"/api/v1/analyze",
 		"application/json",
 		bytes.NewBuffer(jsonData),
 	)
@@ -182,7 +190,7 @@ func GetAnalysisResult(c *gin.Context) {
 
 	// If task is still processing, fetch latest status from Python service
 	if task.Status == "pending" || task.Status == "processing" {
-		resp, err := tradingHTTPClient.Get(TRADING_SERVICE_URL + "/api/v1/analysis/" + taskID)
+		resp, err := tradingHTTPClient.Get(tradingServiceURL + "/api/v1/analysis/" + taskID)
 		if err != nil {
 			task.Status = "failed"
 			task.Error = "failed to reach trading service: " + err.Error()
@@ -331,7 +339,7 @@ func GetAnalysisStats(c *gin.Context) {
 
 // CheckServiceHealth checks if the Python trading service is available
 func CheckServiceHealth(c *gin.Context) {
-	resp, err := http.Get(TRADING_SERVICE_URL + "/health")
+	resp, err := http.Get(tradingServiceURL + "/health")
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"status":  "unavailable",

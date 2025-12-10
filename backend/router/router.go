@@ -1,6 +1,8 @@
 package router
 
 import (
+	"os"
+	"strings"
 	"time"
 
 	"github.com/JerryLinyx/FinGOAT/controllers"
@@ -12,17 +14,40 @@ import (
 func InitRouter() *gin.Engine {
 	r := gin.Default()
 
+	allowedOrigins := []string{"http://localhost:5173", "http://localhost:8080"}
+	if raw := os.Getenv("FRONTEND_ORIGINS"); raw != "" {
+		split := strings.Split(raw, ",")
+		allowedOrigins = allowedOrigins[:0]
+		for _, v := range split {
+			trimmed := strings.TrimSpace(v)
+			if trimmed != "" {
+				allowedOrigins = append(allowedOrigins, trimmed)
+			}
+		}
+		if len(allowedOrigins) == 0 {
+			allowedOrigins = []string{"*"}
+		}
+	}
+
+	allowCreds := true
+	if len(allowedOrigins) == 1 && allowedOrigins[0] == "*" {
+		allowCreds = false
+	}
+
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
+		AllowCredentials: allowCreds,
 		// AllowOriginFunc: func(origin string) bool {
 		// 	return origin == "https://github.com"
 		// },
 		MaxAge: 12 * time.Hour,
 	}))
+
+	// Public health endpoint for liveness/readiness checks
+	r.GET("/api/health", controllers.Health)
 
 	auth := r.Group("/api/auth")
 	{
@@ -37,6 +62,7 @@ func InitRouter() *gin.Engine {
 		api.POST("/exchangeRates", controllers.CreateExchangeRate)
 
 		api.GET("/articles", controllers.GetArticles)
+		api.GET("/articles/refresh", controllers.RefreshRSSArticles)
 		api.GET("/articles/:id", controllers.GetArticlesByID)
 		api.POST("/articles", controllers.CreateArticle)
 

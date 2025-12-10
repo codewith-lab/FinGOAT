@@ -57,6 +57,6 @@ npm run dev
 ```
 
 #### 界面展示
-![](static/login.png)
+![](assets/login.png)
 
-![](static/dashboard.png)
+![](assets/dashboard.png)

@@ -10,4 +10,11 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    proxy: {
+      // Proxy API calls to backend during local dev to keep VITE_API_URL empty/relative.
+      '/api': 'http://localhost:3000',
+      '/trading': 'http://localhost:8001',
+    },
+  },
 })
