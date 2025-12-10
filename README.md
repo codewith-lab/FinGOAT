@@ -77,6 +77,10 @@ conda deactivate
 
 pip install --upgrade pip
 pip install -r requirements.txt
+
+# for python3
+# python3 -m pip install --upgrade pip
+# python3 -m pip install -r requirements.txt
 ```
 
 2) Configure API keys and service settings
@@ -90,6 +94,7 @@ cp .env.trading .env
 ```bash
 # dev mode (auto reload logs to console)
 python trading_service.py
+# python3 trading_service.py
 
 # production-style
 uvicorn trading_service:app --host 0.0.0.0 --port 8001 --workers 4
