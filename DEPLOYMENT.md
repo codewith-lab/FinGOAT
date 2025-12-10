@@ -272,6 +272,101 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm install prometheus prometheus-community/kube-prometheus-stack -n monitoring --create-namespace
 ```
 
+## ☁️ 在 GCP VM 上运行 Docker Compose
+
+1. 创建 VM 并开放端口  
+   - 选择 Linux（推荐 Ubuntu/Debian），磁盘 ≥50GB。  
+   - 防火墙放行 80（HTTP），可选放行 8080/3000/8001（调试）。
+
+2. 安装 Docker & Compose（VM 上执行）  
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y \
+    ca-certificates \
+    curl \
+    gnupg \
+    vim
+   ```
+   Add Docker GPG Key
+   ```bash
+   sudo install -m 0755 -d /etc/apt/keyrings
+   curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+   | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+   sudo chmod a+r /etc/apt/keyrings/docker.gpg
+   ```
+
+   Add Docker official APT Repo
+   ```bash
+   echo \
+      "deb [arch=$(dpkg --print-architecture) \
+      signed-by=/etc/apt/keyrings/docker.gpg] \
+      https://download.docker.com/linux/ubuntu \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+      | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+   ```
+
+   ```bash
+   sudo apt-get update
+
+   sudo apt-get install -y \
+    docker-ce \
+    docker-ce-cli \
+    containerd.io \
+    docker-buildx-plugin \
+    docker-compose-plugin
+   ```
+
+3. 拉代码  
+   ```bash
+   git clone https://github.com/JerryLinyx/FinGOAT.git && cd FinGOAT
+   ```
+
+4. 配置 Secrets / 环境变量  
+   ```bash
+   cd langchain-v1
+   cp .env.trading .env           # 如无则复制模板
+   # 编辑 .env 填写 OPENAI_API_KEY / DASHSCOPE_API_KEY / ALPHA_VANTAGE_API_KEY 等
+   cd ..
+
+   cd TradingAgents
+   cp .env.example .env  
+
+   # 设置强密码覆盖默认 DB 密码（当前 shell）
+   export POSTGRES_PASSWORD='<strong-password>'
+   # 可选：export FRONTEND_ORIGINS="http://<域名>,http://<VM_IP>"
+   # 可选：export LLM_TIMEOUT=300
+   ```
+
+5. 启动全部服务  
+   ```bash
+   docker --version
+   docker compose version
+   sudo usermod -aG docker $USER
+   exit
+   docker ps
+   docker compose up -d --build
+   ```
+
+6. 健康检查  
+   ```bash
+   curl http://localhost/api/health
+   curl http://localhost/trading/health
+   ```
+   浏览器访问入口：`http://<VM 公网 IP>/`
+
+7. 日志与维护  
+   ```bash
+   docker compose ps
+   docker compose logs -f backend   # 或 frontend / nginx / trading-service
+   # 重启
+   docker compose restart nginx frontend
+   # 停止（保留数据卷）
+   docker compose down
+   ```
+
+8. HTTPS（可选）  
+   - 在 `nginx/default.conf` 添加证书并监听 443，或使用 GCP 负载均衡终结 TLS。 
+
 ## 🔐 安全建议
 
 1. **不要在代码中硬编码 secrets**
