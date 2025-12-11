@@ -43,6 +43,12 @@ class ConditionalLogic:
             return "tools_fundamentals"
         return "Msg Clear Fundamentals"
 
+    def should_continue_valuation(self, state: AgentState):
+        """Determine if valuation analysis should continue."""
+        # Valuation analyst prefetches data, no tool calls needed
+        # Always go directly to clear
+        return "Msg Clear Valuation"
+
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""
 

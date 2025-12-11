@@ -1,6 +1,9 @@
 # TradingAgents/graph/setup.py
 
 from typing import Dict, Any
+import time
+import asyncio
+import inspect
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph, START
 from langgraph.prebuilt import ToolNode
@@ -21,7 +24,6 @@ class GraphSetup:
         tool_nodes: Dict[str, ToolNode],
         bull_memory,
         bear_memory,
-        trader_memory,
         invest_judge_memory,
         risk_manager_memory,
         conditional_logic: ConditionalLogic,
@@ -32,7 +34,6 @@ class GraphSetup:
         self.tool_nodes = tool_nodes
         self.bull_memory = bull_memory
         self.bear_memory = bear_memory
-        self.trader_memory = trader_memory
         self.invest_judge_memory = invest_judge_memory
         self.risk_manager_memory = risk_manager_memory
         self.conditional_logic = conditional_logic
@@ -85,17 +86,20 @@ class GraphSetup:
             delete_nodes["fundamentals"] = create_msg_delete()
             tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
 
+        # Valuation analyst always runs in parallel; prefetches data directly (no tool calls)
+        valuation_analyst_node = create_valuation_analyst(self.quick_thinking_llm)
+        analyst_nodes["valuation"] = valuation_analyst_node
+        delete_nodes["valuation"] = create_msg_delete()
+        # Explicitly mark valuation as having no tool node
+        tool_nodes["valuation"] = None
+
         # Create researcher and manager nodes
         bull_researcher_node = create_bull_researcher(
             self.quick_thinking_llm, self.bull_memory
         )
-        bear_researcher_node = create_bear_researcher(
-            self.quick_thinking_llm, self.bear_memory
-        )
         research_manager_node = create_research_manager(
             self.deep_thinking_llm, self.invest_judge_memory
         )
-        trader_node = create_trader(self.quick_thinking_llm, self.trader_memory)
 
         # Create risk analysis nodes
         risky_analyst = create_risky_debator(self.quick_thinking_llm)
@@ -107,94 +111,103 @@ class GraphSetup:
 
         # Create workflow
         workflow = StateGraph(AgentState)
+        # Instrumented timing: track start/end timestamps per node
+        def timed_node(label, fn):
+            async def wrapper(state):
+                start_key = f"__stage_starts.{label}"
+                end_key = f"__stage_ends.{label}"
+
+                start_ts = state.get(start_key, time.time())
+                result = fn(state)
+                if asyncio.iscoroutine(result) or isinstance(result, asyncio.Future):
+                    result = await result
+                end_ts = time.time()
+
+                timing_update = {start_key: start_ts, end_key: end_ts}
+
+                if isinstance(result, dict):
+                    result = {**result, **timing_update}
+                else:
+                    result = timing_update
+                return result
+            return wrapper
+
+        # Join node to gate progression until all analysts produce reports
+        def analyst_join_node(state):
+            return state
+
+        workflow.add_node("Analyst Join", analyst_join_node)
+        workflow.add_node("Analyst Wait", lambda state: state)
+
+        def should_proceed_all_analysts(state):
+            required = []
+            if "market" in selected_analysts:
+                required.append(state.get("market_report"))
+            if "social" in selected_analysts:
+                required.append(state.get("sentiment_report"))
+            if "news" in selected_analysts:
+                required.append(state.get("news_report"))
+            if "fundamentals" in selected_analysts:
+                required.append(state.get("fundamentals_report"))
+            # Valuation analyst runs in parallel with other analysts, but we don't wait for it
+            # proceed only when all required reports are present and non-empty
+            ready = all(bool(r) for r in required)
+            return "proceed" if ready else "wait"
 
         # Add analyst nodes to the graph
         for analyst_type, node in analyst_nodes.items():
-            workflow.add_node(f"{analyst_type.capitalize()} Analyst", node)
+            tool_node = tool_nodes.get(analyst_type)
+            workflow.add_node(f"{analyst_type.capitalize()} Analyst", timed_node(f"{analyst_type}_start", node))
             workflow.add_node(
                 f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
             )
-            workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
+            # Tool nodes may be optional (some analysts prefetch); guard existence
+            if tool_node is not None:
+                workflow.add_node(f"tools_{analyst_type}", tool_node)
+            workflow.add_edge(START, f"{analyst_type.capitalize()} Analyst")
 
-        # Add other nodes
-        workflow.add_node("Bull Researcher", bull_researcher_node)
-        workflow.add_node("Bear Researcher", bear_researcher_node)
-        workflow.add_node("Research Manager", research_manager_node)
-        workflow.add_node("Trader", trader_node)
-        workflow.add_node("Risky Analyst", risky_analyst)
-        workflow.add_node("Neutral Analyst", neutral_analyst)
-        workflow.add_node("Safe Analyst", safe_analyst)
-        workflow.add_node("Risk Judge", risk_manager_node)
-
-        # Define edges
-        # Start with the first analyst
-        first_analyst = selected_analysts[0]
-        workflow.add_edge(START, f"{first_analyst.capitalize()} Analyst")
-
-        # Connect analysts in sequence
-        for i, analyst_type in enumerate(selected_analysts):
+        # Analysts run in parallel; each loops tools/clear, then goes to join
+        # Only add conditional edges for analysts that were actually created
+        for analyst_type in analyst_nodes.keys():
             current_analyst = f"{analyst_type.capitalize()} Analyst"
             current_tools = f"tools_{analyst_type}"
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
+            tool_node = tool_nodes.get(analyst_type)
 
-            # Add conditional edges for current analyst
+            # Add conditional edges for current analyst (same pattern for all)
+            path_options = (
+                [current_tools, current_clear] if tool_node is not None else [current_clear]
+            )
             workflow.add_conditional_edges(
                 current_analyst,
                 getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
-                [current_tools, current_clear],
+                path_options,
             )
-            workflow.add_edge(current_tools, current_analyst)
+            if tool_node is not None:
+                workflow.add_edge(current_tools, current_analyst)
 
-            # Connect to next analyst or to Bull Researcher if this is the last analyst
-            if i < len(selected_analysts) - 1:
-                next_analyst = f"{selected_analysts[i+1].capitalize()} Analyst"
-                workflow.add_edge(current_clear, next_analyst)
-            else:
-                workflow.add_edge(current_clear, "Bull Researcher")
+            # After analyst clear, go to join gate
+            workflow.add_edge(current_clear, "Analyst Join")
+
+        # Add other nodes
+        workflow.add_node("Research Manager", timed_node("research_manager", research_manager_node))
+        
+        workflow.add_node("Risky Analyst", timed_node("risky_analyst", risky_analyst))
+        workflow.add_node("Risk Judge", timed_node("risk_judge", risk_manager_node))
+
+        # Join gate: when all required analyst reports ready, proceed to PM Engine
+        workflow.add_conditional_edges(
+            "Analyst Join",
+            should_proceed_all_analysts,
+            {
+                "proceed": "Research Manager",
+                "wait": "Analyst Wait",
+            },
+        )
 
         # Add remaining edges
-        workflow.add_conditional_edges(
-            "Bull Researcher",
-            self.conditional_logic.should_continue_debate,
-            {
-                "Bear Researcher": "Bear Researcher",
-                "Research Manager": "Research Manager",
-            },
-        )
-        workflow.add_conditional_edges(
-            "Bear Researcher",
-            self.conditional_logic.should_continue_debate,
-            {
-                "Bull Researcher": "Bull Researcher",
-                "Research Manager": "Research Manager",
-            },
-        )
-        workflow.add_edge("Research Manager", "Trader")
-        workflow.add_edge("Trader", "Risky Analyst")
-        workflow.add_conditional_edges(
-            "Risky Analyst",
-            self.conditional_logic.should_continue_risk_analysis,
-            {
-                "Safe Analyst": "Safe Analyst",
-                "Risk Judge": "Risk Judge",
-            },
-        )
-        workflow.add_conditional_edges(
-            "Safe Analyst",
-            self.conditional_logic.should_continue_risk_analysis,
-            {
-                "Neutral Analyst": "Neutral Analyst",
-                "Risk Judge": "Risk Judge",
-            },
-        )
-        workflow.add_conditional_edges(
-            "Neutral Analyst",
-            self.conditional_logic.should_continue_risk_analysis,
-            {
-                "Risky Analyst": "Risky Analyst",
-                "Risk Judge": "Risk Judge",
-            },
-        )
+        workflow.add_edge("Research Manager", "Risky Analyst")
+        workflow.add_edge("Risky Analyst", "Risk Judge")
 
         workflow.add_edge("Risk Judge", END)
 

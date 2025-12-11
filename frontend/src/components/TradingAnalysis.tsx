@@ -1,6 +1,11 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { ChangeEvent, FormEvent } from 'react'
 import { tradingService, type AnalysisTask } from '../services/tradingService'
+import {
+    buildStageProgress,
+} from './agentStages'
+import type { AgentStageKey } from './agentStages'
 import '../TradingAnalysis.css'
 
 interface TradingAnalysisProps {
@@ -8,10 +13,15 @@ interface TradingAnalysisProps {
     llmProvider: string
     llmModel: string
     llmBaseUrl?: string
+    onTaskUpdate?: (task: AnalysisTask | null) => void
+    controlsContainer?: HTMLElement | null
+    selectedStageKey?: AgentStageKey | null
+    onStageSelect?: (stage: AgentStageKey) => void
 }
 
-export function TradingAnalysis({ onSessionExpired, llmProvider, llmModel, llmBaseUrl }: TradingAnalysisProps) {
+export function TradingAnalysis({ onSessionExpired, llmProvider, llmModel, llmBaseUrl, onTaskUpdate, controlsContainer, selectedStageKey, onStageSelect }: TradingAnalysisProps) {
     const [ticker, setTicker] = useState('')
+    const [selectedModel, setSelectedModel] = useState(llmModel)
     const [date, setDate] = useState(() => {
         const today = new Date()
         return today.toISOString().split('T')[0]
@@ -20,6 +30,9 @@ export function TradingAnalysis({ onSessionExpired, llmProvider, llmModel, llmBa
     const [error, setError] = useState('')
     const [currentTask, setCurrentTask] = useState<AnalysisTask | null>(null)
     const [previousAnalyses, setPreviousAnalyses] = useState<AnalysisTask[]>([])
+    const [elapsedSeconds, setElapsedSeconds] = useState<number>(0)
+    const frozenElapsedRef = useRef<number | null>(null)
+    const frozenTaskIdRef = useRef<string | null>(null)
 
     // Fetch previous analyses on mount
     useEffect(() => {
@@ -44,6 +57,15 @@ export function TradingAnalysis({ onSessionExpired, llmProvider, llmModel, llmBa
         setDate(e.target.value)
     }
 
+    useEffect(() => {
+        setSelectedModel(llmModel)
+    }, [llmModel])
+
+    const modelOptions = useMemo(() => {
+        const defaults = [llmModel, 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-2024-07-18', 'claude-3-5-sonnet', 'claude-3-haiku', 'llama-3.1-70b']
+        return Array.from(new Set(defaults.filter(Boolean)))
+    }, [llmModel])
+
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault()
 
@@ -60,26 +82,29 @@ export function TradingAnalysis({ onSessionExpired, llmProvider, llmModel, llmBa
         setError('')
         setLoading(true)
         setCurrentTask(null)
+        onTaskUpdate?.(null)
 
         try {
             // Submit analysis request
             const llmConfig = {
                 provider: llmProvider,
                 base_url: llmBaseUrl || undefined,
-                quick_think_llm: llmModel,
-                deep_think_llm: llmModel,
+                quick_think_llm: selectedModel,
+                deep_think_llm: selectedModel,
             }
             const task = await tradingService.requestAnalysis(ticker.trim(), date, llmConfig)
             setCurrentTask(task)
+            onTaskUpdate?.(task)
 
             // Start polling for results
             await tradingService.pollAnalysisResult(
                 task.task_id,
                 (updatedTask) => {
                     setCurrentTask(updatedTask)
+                    onTaskUpdate?.(updatedTask)
                 },
-                120, // allow longer-running jobs (up to ~16 minutes with 8s interval)
-                8000 // poll every 8 seconds
+                120, // allow longer-running jobs
+                3000 // poll every 3 seconds for fresher UI updates
             )
 
             // Reload previous analyses
@@ -100,6 +125,78 @@ export function TradingAnalysis({ onSessionExpired, llmProvider, llmModel, llmBa
         if (confidence === undefined) return 'N/A'
         return `${(confidence * 100).toFixed(1)}%`
     }
+
+    const formatElapsed = (seconds: number) => {
+        if (seconds < 10) return `${seconds.toFixed(1)}s`
+        if (seconds < 60) return `${Math.round(seconds)}s`
+        const m = Math.floor(seconds / 60)
+        const s = Math.floor(seconds % 60)
+        return `${m}m ${s}s`
+    }
+
+    // Track elapsed time while processing
+    useEffect(() => {
+        const task = currentTask
+        if (!task) {
+            setElapsedSeconds(0)
+            frozenElapsedRef.current = null
+            frozenTaskIdRef.current = null
+            return
+        }
+
+        // For completed or failed tasks, freeze the elapsed time (only calculate once per task)
+        if (task.status === 'completed' || task.status === 'failed') {
+            // If we've already frozen the elapsed time for this task, don't recalculate
+            if (frozenTaskIdRef.current === task.task_id && frozenElapsedRef.current !== null) {
+                // Value is already frozen, no need to update
+                return
+            }
+
+            let finalElapsed = 0
+            
+            // Use processing_time_seconds if available
+            if (typeof task.processing_time_seconds === 'number' && task.processing_time_seconds > 0) {
+                finalElapsed = task.processing_time_seconds
+            }
+            // Otherwise, calculate from CreatedAt to completed_at if available
+            else if (task.completed_at && task.CreatedAt) {
+                const startTime = new Date(task.CreatedAt).getTime()
+                const endTime = new Date(task.completed_at).getTime()
+                finalElapsed = Math.max(0, (endTime - startTime) / 1000)
+            }
+            // Last resort: if we have a frozen value from before, use it; otherwise 0
+            else {
+                finalElapsed = frozenElapsedRef.current !== null ? frozenElapsedRef.current : 0
+            }
+            
+            // Freeze the value for this task
+            frozenElapsedRef.current = finalElapsed
+            frozenTaskIdRef.current = task.task_id
+            setElapsedSeconds(finalElapsed)
+            return
+        }
+
+        // Reset frozen state when task is not completed/failed
+        if (frozenTaskIdRef.current !== task.task_id) {
+            frozenElapsedRef.current = null
+            frozenTaskIdRef.current = null
+        }
+
+        // Only run the timer for processing tasks
+        if (task.status !== 'processing') {
+            return
+        }
+
+        // Calculate elapsed time from CreatedAt
+        const startedAt = task.CreatedAt ? new Date(task.CreatedAt).getTime() : Date.now()
+        const tick = () => {
+            const now = Date.now()
+            setElapsedSeconds(Math.max(0, (now - startedAt) / 1000))
+        }
+        tick()
+        const id = window.setInterval(tick, 1000)
+        return () => window.clearInterval(id)
+    }, [currentTask?.task_id, currentTask?.status, currentTask?.processing_time_seconds, currentTask?.completed_at, currentTask?.CreatedAt])
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -127,158 +224,187 @@ export function TradingAnalysis({ onSessionExpired, llmProvider, llmModel, llmBa
         }
     }
 
-    const renderAnalysisResult = () => {
-        if (!currentTask) return null
-
+    const renderStageProgress = (task: AnalysisTask | null) => {
+        if (!task) return null
+        const stages = buildStageProgress(task)
         return (
-            <div className="analysis-result">
-                <div className="result-header">
-                    <h3>{currentTask.ticker}</h3>
-                    <span
-                        className="status-badge"
-                        style={{ backgroundColor: getStatusColor(currentTask.status) }}
-                    >
-                        {currentTask.status.toUpperCase()}
-                    </span>
-                </div>
-
-                {currentTask.status === 'processing' && (
-                    <div className="processing-indicator">
-                        <div className="spinner"></div>
-                        <p>Analyzing {currentTask.ticker}... This may take 2-5 minutes.</p>
-                        <small>Multi-agent analysis in progress</small>
+            <div className="stage-progress">
+                <div className="stage-progress__lane">
+                    <div className="stage-progress__lane-header">Agent Progress</div>
+                    <div className="stage-progress__list">
+                        {stages.map((stage) => {
+                            const badgeText =
+                                stage.status === 'completed'
+                                    ? 'COMPLETED'
+                                    : stage.status.toUpperCase()
+                            return (
+                                <button
+                                    key={stage.key}
+                                    type="button"
+                                    className={`stage-card stage-card--${stage.status} ${selectedStageKey === stage.key ? 'stage-card--active' : ''}`}
+                                    onClick={() => onStageSelect?.(stage.key)}
+                                >
+                                    <div className="stage-progress__status">
+                                        <span className={`stage-badge stage-badge--${stage.status}`}>
+                                            {badgeText}
+                                        </span>
+                                        <span className="stage-progress__label">{stage.displayLabel || stage.label}</span>
+                                        {stage.durationSeconds !== undefined && (
+                                            <span className="stage-progress__duration">
+                                                ⏱ {formatElapsed(stage.durationSeconds)}
+                                            </span>
+                                        )}
+                                    </div>
+                                </button>
+                            )
+                        })}
                     </div>
-                )}
+                </div>
+            </div>
+        )
+    }
 
-                {currentTask.status === 'completed' && currentTask.decision && (
-                    <div className="decision-result">
-                        <div className="decision-card">
-                            <div className="decision-main">
-                                <span className="decision-label">Decision</span>
+    const toolbar = (
+        <div className="analysis-toolbar-wrapper">
+            <form onSubmit={handleSubmit} className="analysis-toolbar">
+                <div className="toolbar-actions">
+                    <button
+                        type="submit"
+                        className="analyze-button"
+                        disabled={loading || !ticker.trim()}
+                    >
+                        {loading ? (
+                            <>
+                                <span className="button-spinner"></span>
+                                Analyzing...
+                            </>
+                        ) : (
+                            'Analyze'
+                        )}
+                    </button>
+                </div>
+                <div className="toolbar-left">
+                    <label htmlFor="ticker">Stock</label>
+                    <input
+                        id="ticker"
+                        type="text"
+                        placeholder="e.g., AAPL"
+                        value={ticker}
+                        onChange={handleTickerChange}
+                        disabled={loading}
+                        maxLength={10}
+                        style={{ textTransform: 'uppercase' }}
+                    />
+                    <label htmlFor="model">Model</label>
+                    <select
+                        id="model"
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        disabled={loading}
+                    >
+                        {modelOptions.map((opt: string) => (
+                            <option key={opt} value={opt}>
+                                {opt}
+                            </option>
+                        ))}
+                    </select>
+                    <label htmlFor="date">Date</label>
+                    <input
+                        id="date"
+                        type="date"
+                        value={date}
+                        onChange={handleDateChange}
+                        disabled={loading}
+                        max={new Date().toISOString().split('T')[0]}
+                    />
+                </div>
+            </form>
+            {error && <div className="form-error">{error}</div>}
+        </div>
+    )
+
+    const toolbarNode = controlsContainer ? createPortal(toolbar, controlsContainer) : toolbar
+
+    return (
+        <>
+            {toolbarNode}
+            <div className="trading-analysis-container">
+                {currentTask && (
+                    <div className="analysis-header">
+                        <div className="analysis-header__info">
+                            <h3>{currentTask.ticker}</h3>
+                            {currentTask.decision && (
                                 <span
                                     className="decision-action"
                                     style={{ color: getDecisionColor(currentTask.decision.action) }}
                                 >
                                     {currentTask.decision.action}
+                                    {typeof currentTask.decision.confidence === 'number' && (
+                                        <span className="decision-action__conf">
+                                            {' '}
+                                            · {(currentTask.decision.confidence * 100).toFixed(0)}%
+                                        </span>
+                                    )}
                                 </span>
-                            </div>
-                            <div className="decision-confidence">
-                                <span className="confidence-label">Confidence</span>
-                                <span className="confidence-value">{formatConfidence(currentTask.decision.confidence)}</span>
-                            </div>
+                            )}
                         </div>
-
-                        {currentTask.processing_time_seconds && (
-                            <div className="analysis-meta">
-                                <span>⏱️ Analysis completed in {Math.round(currentTask.processing_time_seconds)}s</span>
-                            </div>
-                        )}
-
-                        {currentTask.analysis_report && (
-                            <details className="analysis-details">
-                                <summary>📊 View Detailed Analysis Report</summary>
-                                <div className="report-content">
-                                    <pre>{JSON.stringify(currentTask.analysis_report, null, 2)}</pre>
-                                </div>
-                            </details>
-                        )}
+                        <div className="analysis-header__status">
+                            <span
+                                className="status-badge"
+                                style={{ backgroundColor: getStatusColor(currentTask.status) }}
+                            >
+                                {currentTask.status.toUpperCase()}
+                            </span>
+                            {elapsedSeconds > 0 && (
+                                <span className="status-elapsed">⏱ {formatElapsed(elapsedSeconds)}</span>
+                            )}
+                        </div>
                     </div>
                 )}
 
-                {currentTask.status === 'failed' && (
-                    <div className="error-result">
-                        <p>❌ Analysis failed</p>
-                        {currentTask.error && <small>{currentTask.error}</small>}
+                {currentTask && (
+                    <div className="analysis-grid">
+                        <section className="analysis-panel status-panel">
+                            <h4 className="panel-heading-tight">Status</h4>
+                            {renderStageProgress(currentTask)}
+                        </section>
+                    </div>
+                )}
+
+                {previousAnalyses.length > 0 && !loading && !currentTask && (
+                    <div className="previous-analyses">
+                        <h4>Recent Analyses</h4>
+                        <div className="analyses-list">
+                            {previousAnalyses.map((task) => (
+                                <div key={task.task_id} className="analysis-item">
+                                    <div className="item-header">
+                                        <strong>{task.ticker}</strong>
+                                        <span style={{ color: getStatusColor(task.status), fontSize: '0.85em' }}>
+                                            {task.status}
+                                        </span>
+                                    </div>
+                                    {task.decision && (
+                                        <div className="item-decision">
+                                            <span style={{ color: getDecisionColor(task.decision.action) }}>
+                                                {task.decision.action}
+                                            </span>
+                                            <span>{formatConfidence(task.decision.confidence)}</span>
+                                        </div>
+                                    )}
+                                    <div className="item-meta-row">
+                                        <span className="item-date">{new Date(task.CreatedAt).toLocaleString()}</span>
+                                        {task.llm_provider && (
+                                            <span className="item-provider">
+                                                {task.llm_provider}{task.llm_model ? ` / ${task.llm_model}` : ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
-        )
-    }
-
-    return (
-        <div className="trading-analysis-container">
-            <form onSubmit={handleSubmit} className="analysis-form">
-                <div className="form-row">
-                    <div className="form-group">
-                        <label htmlFor="ticker">Stock Ticker</label>
-                        <input
-                            id="ticker"
-                            type="text"
-                            placeholder="e.g., NVDA, AAPL, TSLA"
-                            value={ticker}
-                            onChange={handleTickerChange}
-                            disabled={loading}
-                            maxLength={10}
-                            style={{ textTransform: 'uppercase' }}
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label htmlFor="date">Analysis Date</label>
-                        <input
-                            id="date"
-                            type="date"
-                            value={date}
-                            onChange={handleDateChange}
-                            disabled={loading}
-                            max={new Date().toISOString().split('T')[0]}
-                        />
-                    </div>
-                </div>
-
-                {error && <div className="form-error">{error}</div>}
-
-                <button
-                    type="submit"
-                    className="analyze-button"
-                    disabled={loading || !ticker.trim()}
-                >
-                    {loading ? (
-                        <>
-                            <span className="button-spinner"></span>
-                            Analyzing...
-                        </>
-                    ) : (
-                        '🚀 Analyze Stock'
-                    )}
-                </button>
-            </form>
-
-            {renderAnalysisResult()}
-
-            {previousAnalyses.length > 0 && !loading && !currentTask && (
-                <div className="previous-analyses">
-                    <h4>Recent Analyses</h4>
-                    <div className="analyses-list">
-                        {previousAnalyses.map((task) => (
-                            <div key={task.task_id} className="analysis-item">
-                                <div className="item-header">
-                                    <strong>{task.ticker}</strong>
-                                    <span style={{ color: getStatusColor(task.status), fontSize: '0.85em' }}>
-                                        {task.status}
-                                    </span>
-                                </div>
-                                {task.decision && (
-                                    <div className="item-decision">
-                                        <span style={{ color: getDecisionColor(task.decision.action) }}>
-                                            {task.decision.action}
-                                        </span>
-                                        <span>{formatConfidence(task.decision.confidence)}</span>
-                                    </div>
-                                )}
-                                <div className="item-meta-row">
-                                    <span className="item-date">{new Date(task.CreatedAt).toLocaleString()}</span>
-                                    {task.llm_provider && (
-                                        <span className="item-provider">
-                                            {task.llm_provider}{task.llm_model ? ` / ${task.llm_model}` : ''}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
+        </>
     )
 }

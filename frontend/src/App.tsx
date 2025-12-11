@@ -4,29 +4,19 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import './App.css'
 import { TradingAnalysis } from './components/TradingAnalysis'
+import { AgentResultsModule } from './components/AgentResultsModule'
+import type { AgentStageKey } from './components/agentStages'
+import type { AnalysisTask } from './services/tradingService'
 
 type AuthMode = 'login' | 'register'
 type View = 'auth' | 'home'
 type Theme = 'light' | 'dark'
-
-type Article = {
-  id: number
-  title: string
-  content: string
-  preview: string
-  createdAt?: string
-  publishedAt?: string
-  source?: string
-  sourceURL?: string
-  link?: string
-}
-
-
 
 type ThemeContextValue = {
   theme: Theme
@@ -100,8 +90,8 @@ const PanelIcon = ({ type }: { type: 'config' | 'chat' | 'news' }) => {
 }
 
 const TOKEN_STORAGE_KEY = 'fingoat_token'
-const rawApiUrl = import.meta.env.VITE_API_URL
-const API_BASE_URL = rawApiUrl ? rawApiUrl.replace(/\/$/, '') : ''
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 'http://localhost:3000'
 
 const initialForm = {
   username: '',
@@ -115,22 +105,6 @@ const NAV_LINKS = [
   { label: 'Portfolio', status: 'TODO' },
   { label: 'History', status: 'TODO' },
 ] as const
-
-
-
-const DATA_SOURCES = [
-  { label: 'Bloomberg Terminal', enabled: true },
-  { label: 'Reuters Eikon', enabled: true },
-  { label: 'SEC EDGAR Filings', enabled: true },
-  { label: 'Social Media Sentiment', enabled: false },
-] as const
-
-const NOTIFICATION_CHANNELS = [
-  { label: 'Trade Executions', enabled: true },
-  { label: 'Major Market Alerts', enabled: true },
-] as const
-
-const RISK_LABELS = ['Conservative', 'Moderate', 'Aggressive'] as const
 
 const getStoredTheme = (): Theme => {
   if (typeof window === 'undefined') {
@@ -149,34 +123,13 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [articles, setArticles] = useState<Article[]>([])
-  const [articlesLoading, setArticlesLoading] = useState(false)
-  const [articlesError, setArticlesError] = useState('')
-  const [riskTolerance, setRiskTolerance] = useState(1)
-  const [dataSources, setDataSources] = useState<Record<string, boolean>>(() =>
-    DATA_SOURCES.reduce(
-      (acc, source) => ({
-        ...acc,
-        [source.label]: source.enabled,
-      }),
-      {} as Record<string, boolean>,
-    ),
-  )
-  const [notificationsState, setNotificationsState] = useState<Record<string, boolean>>(() =>
-    NOTIFICATION_CHANNELS.reduce(
-      (acc, channel) => ({
-        ...acc,
-        [channel.label]: channel.enabled,
-      }),
-      {} as Record<string, boolean>,
-    ),
-  )
-  const [expandedArticles, setExpandedArticles] = useState<Record<number, boolean>>({})
-  const [articleLikes, setArticleLikes] = useState<Record<number, number>>({})
-  const [likingArticle, setLikingArticle] = useState<Record<number, boolean>>({})
-  const [llmProvider, setLlmProvider] = useState('openai')
-  const [llmModel, setLlmModel] = useState('gpt-4o-mini')
-  const [llmBaseUrl, setLlmBaseUrl] = useState('https://api.openai.com/v1')
+  const [latestTask, setLatestTask] = useState<AnalysisTask | null>(null)
+  const controlsBarRef = useRef<HTMLDivElement | null>(null)
+  const [controlsContainer, setControlsContainer] = useState<HTMLDivElement | null>(null)
+  const [selectedStageKey, setSelectedStageKey] = useState<AgentStageKey | null>(null)
+  const llmProvider = 'openai'
+  const llmModel = 'gpt-4o-mini'
+  const llmBaseUrl = 'https://api.openai.com/v1'
 
   useEffect(() => {
     localStorage.setItem('fingoat_theme', theme)
@@ -194,6 +147,10 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    setControlsContainer(controlsBarRef.current)
+  }, [view])
+
   const subtitle = useMemo(() => {
     if (mode === 'login') {
       return 'Please enter your credentials to sign in.'
@@ -201,33 +158,8 @@ function App() {
     return 'Create an account to start orchestrating trades.'
   }, [mode])
 
-  const toggleDataSource = (label: string) => {
-    setDataSources((prev) => ({
-      ...prev,
-      [label]: !prev[label],
-    }))
-  }
-
-  const toggleNotification = (label: string) => {
-    setNotificationsState((prev) => ({
-      ...prev,
-      [label]: !prev[label],
-    }))
-  }
-
-  const handleRiskChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setRiskTolerance(Number(event.target.value))
-  }
-
   const loadPreviousAnalyses = () => {
     // Placeholder - handled by TradingAnalysis component
-  }
-
-  const toggleArticleBody = (articleId: number) => {
-    setExpandedArticles((prev) => ({
-      ...prev,
-      [articleId]: !prev[articleId],
-    }))
   }
 
   const resetSession = useCallback((message?: string) => {
@@ -238,190 +170,7 @@ function App() {
     setShowPassword(false)
     setSuccess('')
     setError(message ?? '')
-    setArticles([])
-    setArticlesError('')
-    setArticlesLoading(false)
   }, [])
-
-  const fetchArticleLikes = useCallback(
-    async (ids: number[]) => {
-      const token = localStorage.getItem(TOKEN_STORAGE_KEY)
-      if (!token || ids.length === 0) {
-        return
-      }
-      try {
-        const results = await Promise.all(
-          ids.map(async (articleId) => {
-            const response = await fetch(`${API_BASE_URL}/api/articles/${articleId}/like`, {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: token,
-              },
-            })
-
-            if (response.status === 401) {
-              resetSession('Session expired. Please log in again.')
-              return [articleId, 0] as const
-            }
-
-            if (!response.ok) {
-              return [articleId, 0] as const
-            }
-
-            const data = await response.json().catch(() => ({}))
-            return [articleId, Number(data.likes ?? 0)] as const
-          }),
-        )
-
-        setArticleLikes((prev) => {
-          const next = { ...prev }
-          results.forEach(([articleId, value]) => {
-            if (!Number.isNaN(value)) {
-              next[articleId] = value
-            }
-          })
-          return next
-        })
-      } catch {
-        // ignore network hiccups for like counts
-      }
-    },
-    [resetSession],
-  )
-
-  const fetchArticles = useCallback(
-    async (options?: { signal?: AbortSignal; refresh?: boolean }) => {
-      const signal = options?.signal
-      const shouldRefresh = options?.refresh
-      const token = localStorage.getItem(TOKEN_STORAGE_KEY)
-      if (!token) {
-        resetSession()
-        return
-      }
-
-      setArticlesLoading(true)
-      setArticlesError('')
-      try {
-        if (shouldRefresh) {
-          await fetch(`${API_BASE_URL}/api/articles/refresh`, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: token,
-            },
-            signal,
-          }).catch((err) => {
-            console.warn('RSS refresh failed', err)
-          })
-        }
-
-        const response = await fetch(`${API_BASE_URL}/api/articles`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: token,
-          },
-          signal,
-        })
-
-        if (signal?.aborted) return
-
-        if (response.status === 401) {
-          resetSession('Session expired. Please log in again.')
-          return
-        }
-
-        const payload = await response.json().catch(() => null)
-
-        if (!response.ok) {
-          const message =
-            payload && typeof payload.error === 'string'
-              ? payload.error
-              : 'Unable to fetch articles right now.'
-          setArticlesError(message)
-          return
-        }
-
-        const normalizeArticle = (item: Record<string, unknown>): Article => ({
-          id: Number(item.id ?? item.ID ?? 0),
-          title: String(item.title ?? item.Title ?? 'Untitled article'),
-          content: String(item.content ?? item.Content ?? ''),
-          preview: String(item.preview ?? item.Preview ?? ''),
-          createdAt: String(item.createdAt ?? item.CreatedAt ?? ''),
-          publishedAt: String(item.publishedAt ?? item.PublishedAt ?? ''),
-          source: String(item.source ?? item.Source ?? ''),
-          sourceURL: String(item.sourceURL ?? item.SourceURL ?? ''),
-          link: String(item.link ?? item.Link ?? ''),
-        })
-
-        const rawItems = Array.isArray(payload)
-          ? (payload as Record<string, unknown>[])
-          : payload
-            ? [payload as Record<string, unknown>]
-            : []
-        const normalized = rawItems.map((item) => normalizeArticle(item))
-        setArticles(normalized)
-        setExpandedArticles({})
-        fetchArticleLikes(normalized.map((article) => article.id))
-      } catch (err) {
-        if (signal?.aborted) return
-        setArticlesError(
-          err instanceof Error
-            ? err.message
-            : 'Unexpected error while loading news.',
-        )
-      } finally {
-        if (!signal?.aborted) {
-          setArticlesLoading(false)
-        }
-      }
-    },
-    [resetSession, fetchArticleLikes],
-  )
-
-  useEffect(() => {
-    if (view !== 'home') return
-    const controller = new AbortController()
-    fetchArticles({ signal: controller.signal })
-    return () => controller.abort()
-  }, [view, fetchArticles])
-
-  const handleLikeArticle = async (articleId: number) => {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY)
-    if (!token) {
-      resetSession()
-      return
-    }
-    setLikingArticle((prev) => ({ ...prev, [articleId]: true }))
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/articles/${articleId}/like`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: token,
-        },
-      })
-
-      if (response.status === 401) {
-        resetSession('Session expired. Please log in again.')
-        return
-      }
-
-      if (response.ok) {
-        setArticleLikes((prev) => ({
-          ...prev,
-          [articleId]: (prev[articleId] ?? 0) + 1,
-        }))
-      }
-    } catch (error) {
-      setArticlesError((prev) =>
-        prev || 'Unable to register your like right now. Please try again later.',
-      )
-    } finally {
-      setLikingArticle((prev) => ({ ...prev, [articleId]: false }))
-    }
-  }
 
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
     const { name, value } = event.target
@@ -504,90 +253,6 @@ function App() {
     setShowPassword((prev) => !prev)
   }
 
-  const riskTone = RISK_LABELS[riskTolerance] ?? 'Moderate'
-
-  const MODEL_PRESETS: Record<string, string[]> = {
-    openai: ['gpt-4o-mini', 'gpt-4o'],
-    anthropic: ['claude-3-haiku-20240307', 'claude-3-5-sonnet-latest'],
-    google: ['gemini-1.5-flash', 'gemini-1.5-pro'],
-    deepseek: ['deepseek-chat'],
-    aliyun: ['deepseek-v3.2', 'glm-4.6', 'Moonshot-Kimi-K2-Instruct', 'qwen3-vl-32b-thinking'],
-    'openai-compatible': ['gpt-4o-mini'],
-    vllm: ['gpt-4o-mini'],
-    ollama: [
-      'llama3.1',
-      'llama3.1:405b',
-      'llama3.2',
-      'llama3.2:1b',
-      'llama3.2-vision',
-      'llama3.2-vision:90b',
-      'llama3.3',
-      'llama4:scout',
-      'llama4:maverick',
-      'gemma3:1b',
-      'gemma3',
-      'gemma3:12b',
-      'gemma3:27b',
-      'qwq',
-      'deepseek-r1',
-      'deepseek-r1:671b',
-      'phi4',
-      'phi4-mini',
-      'mistral',
-      'moondream',
-      'neural-chat',
-      'starling-lm',
-      'codellama',
-      'llama2-uncensored',
-      'llava',
-      'granite3.3',
-      'qwen2.5',
-    ],
-  }
-
-  const BASE_DEFAULTS: Record<string, string> = {
-    openai: 'https://api.openai.com/v1',
-    deepseek: 'https://api.deepseek.com/v1',
-    aliyun: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    'openai-compatible': 'http://localhost:8009/v1',
-    vllm: 'http://localhost:8009/v1',
-    ollama: 'http://localhost:11434',
-  }
-
-  const handleLlmProviderChange = (e: ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value
-    setLlmProvider(value)
-    const presets = MODEL_PRESETS[value] || []
-    if (presets.length > 0) {
-      setLlmModel(presets[0])
-    }
-    if (BASE_DEFAULTS[value]) {
-      setLlmBaseUrl(BASE_DEFAULTS[value])
-    } else {
-      setLlmBaseUrl('')
-    }
-  }
-
-  const handleLlmModelChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setLlmModel(e.target.value)
-  }
-
-  const handleLlmBaseUrlChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setLlmBaseUrl(e.target.value)
-  }
-
-  const formatTimestamp = (value?: string) => {
-    if (!value) return 'Moments ago'
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return 'Moments ago'
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
-
   const dashboardView = (
     <div className="dashboard">
       <header className="top-nav">
@@ -595,7 +260,6 @@ function App() {
           <div className="brand-mark">FG</div>
           <div className="brand-copy">
             <strong>FinGOAT</strong>
-            <span>Financial Graph-Orchestrated Agent Trading</span>
           </div>
         </div>
         <nav className="nav-links">
@@ -618,177 +282,17 @@ function App() {
         </div>
       </header>
 
-      <div className="todo-strip">
-        Navigation targets are placeholders—full page switching remains a TODO.
-      </div>
+      <div className="todo-strip-divider" aria-hidden="true" />
+
+      <div className="analysis-control-bar" ref={controlsBarRef} />
 
       <main className="dashboard-grid">
-        <section className="panel config-panel">
-          <div className="panel-heading">
-            <PanelIcon type="config" />
-            <div>
-              <p className="panel-label">Configuration</p>
-              <h2>Agent Settings</h2>
-            </div>
-            <button type="button" className="panel-action" disabled>
-              TODO
-            </button>
-          </div>
-
-          <div className="panel-body scrollable">
-            <div className="config-group">
-              <label className="config-label" htmlFor="ai-model">
-                LLM Provider
-              </label>
-              <select id="ai-model" value={llmProvider} onChange={handleLlmProviderChange}>
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="google">Gemini</option>
-                <option value="deepseek">DeepSeek (OpenAI compatible)</option>
-                <option value="aliyun">Aliyun DashScope</option>
-                <option value="openai-compatible">OpenAI-compatible (custom)</option>
-                <option value="vllm">vLLM (local)</option>
-                <option value="ollama">Ollama (local)</option>
-              </select>
-            </div>
-
-            <div className="config-group">
-              <label className="config-label" htmlFor="llm-model">
-                LLM Model
-              </label>
-              <div className="model-row">
-                <select
-                  id="llm-model-presets"
-                  value={MODEL_PRESETS[llmProvider]?.includes(llmModel) ? llmModel : 'custom'}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    if (val === 'custom') return
-                    setLlmModel(val)
-                  }}
-                >
-                  {(MODEL_PRESETS[llmProvider] || []).map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                  <option value="custom">Custom…</option>
-                </select>
-                <input
-                  id="llm-model"
-                  type="text"
-                  value={llmModel}
-                  onChange={handleLlmModelChange}
-                  placeholder="e.g., gpt-4o-mini / deepseek-v3.2 / glm-4.6 / Moonshot-Kimi-K2-Instruct / qwen3-vl-32b-thinking"
-                />
-              </div>
-            </div>
-
-            {(llmProvider === 'deepseek' ||
-              llmProvider === 'aliyun' ||
-              llmProvider === 'openai-compatible' ||
-              llmProvider === 'vllm' ||
-              llmProvider === 'ollama') && (
-                <div className="config-group">
-                  <label className="config-label" htmlFor="llm-baseurl">
-                    Base URL
-                  </label>
-                  <input
-                    id="llm-baseurl"
-                    type="text"
-                    value={llmBaseUrl}
-                    onChange={handleLlmBaseUrlChange}
-                    placeholder="https://api.deepseek.com"
-                  />
-                </div>
-              )}
-
-            <div className="config-group">
-              <div className="config-label-row">
-                <span>Risk Tolerance</span>
-                <span className="config-value">{riskTone}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="2"
-                step="1"
-                value={riskTolerance}
-                onChange={handleRiskChange}
-              />
-              <div className="range-labels">
-                <span>Conservative</span>
-                <span>Moderate</span>
-                <span>Aggressive</span>
-              </div>
-            </div>
-
-            <div className="config-group">
-              <p className="config-label">Data Sources</p>
-              <ul className="config-list">
-                {DATA_SOURCES.map((source) => (
-                  <li key={source.label} className="config-check">
-                    <button
-                      type="button"
-                      className={`config-row ${dataSources[source.label] ? 'active' : ''}`}
-                      onClick={() => toggleDataSource(source.label)}
-                      aria-pressed={dataSources[source.label]}
-                    >
-                      <span>{source.label}</span>
-                      <span
-                        className={`check-pill ${dataSources[source.label] ? 'active' : ''}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="config-group">
-              <p className="config-label">Notifications</p>
-              <ul className="config-list">
-                {NOTIFICATION_CHANNELS.map((channel) => (
-                  <li key={channel.label} className="config-check">
-                    <button
-                      type="button"
-                      className={`config-row ${notificationsState[channel.label] ? 'active' : ''
-                        }`}
-                      onClick={() => toggleNotification(channel.label)}
-                      aria-pressed={notificationsState[channel.label]}
-                    >
-                      <span>{channel.label}</span>
-                      <span
-                        className={`check-pill ${notificationsState[channel.label] ? 'active' : ''
-                          }`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="config-note">
-              Operating in <strong>{riskTone}</strong> mode using <strong>{llmProvider}</strong> / <strong>{llmModel}</strong>.
-            </div>
-
-            <div className="config-actions">
-              <button type="button" className="action-btn outline">
-                Save Draft
-              </button>
-              <button type="button" className="action-btn primary">
-                Deploy Strategy
-              </button>
-            </div>
-          </div>
-        </section>
-
         <section className="panel ai-panel">
           <div className="panel-heading">
             <PanelIcon type="chat" />
             <div>
-              <p className="panel-label">Trading Analysis</p>
-              <h2>Stock Analysis</h2>
+              <p className="panel-label">Stock Analysis</p>
+              <h2>Status Tracking</h2>
             </div>
             <button type="button" className="panel-action" onClick={loadPreviousAnalyses}>
               Refresh
@@ -801,6 +305,10 @@ function App() {
               llmProvider={llmProvider}
               llmModel={llmModel}
               llmBaseUrl={llmBaseUrl}
+              onTaskUpdate={setLatestTask}
+              controlsContainer={controlsContainer}
+              selectedStageKey={selectedStageKey}
+              onStageSelect={setSelectedStageKey}
             />
           </div>
         </section>
@@ -809,84 +317,20 @@ function App() {
           <div className="panel-heading">
             <PanelIcon type="news" />
             <div>
-              <p className="panel-label">Market News</p>
-              <h2>Live Articles</h2>
+              <p className="panel-label">Agent Results</p>
+              <h2>Key Outputs</h2>
             </div>
-            <button
-              type="button"
-              className="panel-action"
-              onClick={() => fetchArticles({ refresh: true })}
-              disabled={articlesLoading}
-            >
-              {articlesLoading ? 'Refreshing…' : 'Refresh'}
-            </button>
           </div>
 
-          <div className="panel-body">
-            <div className="news-list">
-              {articlesLoading && <p className="news-placeholder">Loading articles…</p>}
-              {!articlesLoading && articlesError && (
-                <p className="news-error">{articlesError}</p>
-              )}
-              {!articlesLoading && !articlesError && articles.length === 0 && (
-                <p className="news-placeholder">
-                  No articles yet. Use the backend endpoints to seed insights.
-                </p>
-              )}
-              {!articlesLoading &&
-                !articlesError &&
-                articles.map((article) => {
-                  const expanded = !!expandedArticles[article.id]
-                  const likes = articleLikes[article.id] ?? 0
-                  const isLiking = !!likingArticle[article.id]
-                  return (
-                    <article key={article.id} className="news-card">
-                      <div className="news-head">
-                      <div>
-                          <p className="news-meta">
-                            {article.source ? `${article.source} • ` : ''}
-                            {formatTimestamp(article.publishedAt || article.createdAt)}
-                          </p>
-                          <h3>{article.title}</h3>
-                        </div>
-                        <button
-                          type="button"
-                          className="news-toggle"
-                          onClick={() => toggleArticleBody(article.id)}
-                        >
-                          {expanded ? 'Hide' : 'Read more'}
-                        </button>
-                      </div>
-                      <p className="news-preview">{article.preview}</p>
-                      {expanded && <p className="news-content">{article.content}</p>}
-                      <div className="news-actions">
-                        {article.link && (
-                          <a
-                            className="news-link"
-                            href={article.link}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Open source →
-                          </a>
-                        )}
-                        <button
-                          type="button"
-                          className="like-btn"
-                          onClick={() => handleLikeArticle(article.id)}
-                          disabled={isLiking}
-                        >
-                          <span aria-hidden="true">♥</span>
-                          <span>{isLiking ? 'Sending…' : `${likes} Likes`}</span>
-                        </button>
-                        <span className="news-id">#{article.id}</span>
-                      </div>
-                    </article>
-                  )
-                })}
-            </div>
+          <div className="panel-body scrollable key-outputs-body">
+            <AgentResultsModule
+              task={latestTask}
+              selectedStageKey={selectedStageKey || undefined}
+              onStageChange={setSelectedStageKey}
+            />
           </div>
         </section>
+
       </main>
     </div>
   )

@@ -20,7 +20,14 @@ class FinancialSituationMemory:
 
         self.embedding = embed_model
         self.client = OpenAI(base_url=embed_base_url, api_key=embed_api_key)
-        self.chroma_client = chromadb.Client(Settings(allow_reset=True))
+        persist_dir = os.getenv(
+            "CHROMA_PERSIST_DIR",
+            os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), ".chroma_store"),
+        )
+        os.makedirs(persist_dir, exist_ok=True)
+        self.chroma_client = chromadb.Client(
+            Settings(allow_reset=True, persist_directory=persist_dir)
+        )
         # Avoid collision when collection already exists (reuse instead of failing)
         try:
             self.situation_collection = self.chroma_client.create_collection(name=name)

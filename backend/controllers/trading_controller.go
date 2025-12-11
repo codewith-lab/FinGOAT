@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -15,14 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const defaultTradingServiceURL = "http://localhost:8001"
-
-var tradingServiceURL = func() string {
-	if v := os.Getenv("TRADING_SERVICE_URL"); v != "" {
-		return strings.TrimRight(v, "/")
-	}
-	return defaultTradingServiceURL
-}()
+const TRADING_SERVICE_URL = "http://localhost:8001"
 
 var tradingHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
@@ -40,6 +32,8 @@ type PythonServiceResponse struct {
 	Date                  string                 `json:"date"`
 	Decision              map[string]interface{} `json:"decision"`
 	AnalysisReport        map[string]interface{} `json:"analysis_report"`
+	KeyOutputs            map[string]interface{} `json:"key_outputs"`
+	StageTimes            map[string]float64     `json:"stage_times"`
 	Error                 string                 `json:"error"`
 	CreatedAt             string                 `json:"created_at"`
 	CompletedAt           string                 `json:"completed_at"`
@@ -117,7 +111,7 @@ func RequestAnalysis(c *gin.Context) {
 	// Call Python trading service
 	jsonData, _ := json.Marshal(req)
 	resp, err := tradingHTTPClient.Post(
-		tradingServiceURL+"/api/v1/analyze",
+		TRADING_SERVICE_URL+"/api/v1/analyze",
 		"application/json",
 		bytes.NewBuffer(jsonData),
 	)
@@ -190,7 +184,7 @@ func GetAnalysisResult(c *gin.Context) {
 
 	// If task is still processing, fetch latest status from Python service
 	if task.Status == "pending" || task.Status == "processing" {
-		resp, err := tradingHTTPClient.Get(tradingServiceURL + "/api/v1/analysis/" + taskID)
+		resp, err := tradingHTTPClient.Get(TRADING_SERVICE_URL + "/api/v1/analysis/" + taskID)
 		if err != nil {
 			task.Status = "failed"
 			task.Error = "failed to reach trading service: " + err.Error()
@@ -220,6 +214,17 @@ func GetAnalysisResult(c *gin.Context) {
 
 		// Update task status
 		task.Status = pythonResp.Status
+
+		// Always surface latest analysis_report to the client (even mid-run)
+		if pythonResp.AnalysisReport != nil {
+			task.AnalysisReport = pythonResp.AnalysisReport
+		}
+		if pythonResp.KeyOutputs != nil {
+			task.KeyOutputs = pythonResp.KeyOutputs
+		}
+		if pythonResp.StageTimes != nil {
+			task.StageTimes = pythonResp.StageTimes
+		}
 
 		// If completed, save decision
 		if pythonResp.Status == "completed" && pythonResp.Decision != nil {
@@ -339,7 +344,7 @@ func GetAnalysisStats(c *gin.Context) {
 
 // CheckServiceHealth checks if the Python trading service is available
 func CheckServiceHealth(c *gin.Context) {
-	resp, err := http.Get(tradingServiceURL + "/health")
+	resp, err := http.Get(TRADING_SERVICE_URL + "/health")
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"status":  "unavailable",

@@ -14,7 +14,7 @@ DEFAULT_CONFIG = {
     "quick_think_llm": os.getenv("LLM_QUICK_MODEL", "gpt-4o-mini"),
     "backend_url": os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
     "llm_timeout": int(os.getenv("LLM_TIMEOUT", "60")),
-    "llm_temperature": float(os.getenv("LLM_TEMPERATURE", "0.2")),
+    "llm_temperature": float(os.getenv("LLM_TEMPERATURE", "0.3")),
     "llm_api_key": os.getenv("LLM_API_KEY"),  # optional override; otherwise provider-specific envs are used
     # Debate and discussion settings
     "max_debate_rounds": 1,

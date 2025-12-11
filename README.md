@@ -19,8 +19,6 @@ git submodule update --init --recursive
 
 #### Install dependencies
 ```bash
-cd backend
-
 go mod init github.com/JerryLinyx/FinGOAT
 
 go get -u github.com/gin-gonic/gin
@@ -57,22 +55,13 @@ docker run -d \
   -v redisdata:/data \
   redis:7.2
 ```
-#### Run the Server
-```bash
-go run main.go
-# curl http://localhost:3000/api/trading/health
-```
-
-
 ### Frontend Setup (TypeScript+Vite+React)
 ```bash
 npm create vite@latest frontend
 
 cd frontend
-npm install
 npm run build
 npm run dev
-# http://localhost:5173/
 ```
 
 ### Agents Setup (LangChain+LangGraph+FastAPI)
@@ -88,10 +77,6 @@ conda deactivate
 
 pip install --upgrade pip
 pip install -r requirements.txt
-
-# for python3
-# python3 -m pip install --upgrade pip
-# python3 -m pip install -r requirements.txt
 ```
 
 2) Configure API keys and service settings
@@ -105,8 +90,6 @@ cp .env.trading .env
 ```bash
 # dev mode (auto reload logs to console)
 python trading_service.py
-# python3 trading_service.py
-# http://localhost:8001/
 
 # production-style
 uvicorn trading_service:app --host 0.0.0.0 --port 8001 --workers 4
@@ -130,9 +113,9 @@ curl -X POST http://localhost:8001/api/v1/analyze \
 The response returns a `task_id`; poll `/api/v1/analysis/{task_id}` for the result.
 
 #### Screenshots
-![](assets/login.png)
+![](static/login.png)
 
-![](assets/dashboard.png)
+![](static/dashboard.png)
 
 
 ## FinGOAT Functional TODO List

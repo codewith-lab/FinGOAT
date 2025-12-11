@@ -1,23 +1,36 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
-from tradingagents.agents.utils.agent_utils import get_news
-from tradingagents.dataflows.config import get_config
+from datetime import datetime, timedelta
+from tradingagents.agents.analysts.base_agent import BaseAgent
 
 
 def create_social_media_analyst(llm):
-    def social_media_analyst_node(state):
+    base = BaseAgent(llm)
+    news_tool = base.get_tools(["get_news"])[0]
+
+    async def social_media_analyst_node(state):
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
         company_name = state["company_of_interest"]
+        try:
+            start_date = (datetime.fromisoformat(str(current_date)) - timedelta(days=7)).date().isoformat()
+        except Exception:
+            start_date = str(current_date)
 
-        tools = [
-            get_news,
-        ]
+        # Single news/social fetch to avoid duplicate tool calls
+        base.log_tool("Social", "Calling get_news", ticker, f"{start_date} -> {current_date}")
+        news_payload = await news_tool.ainvoke(
+            {"ticker": ticker, "start_date": start_date, "end_date": str(current_date)}
+        )
+        news_json = json.dumps(news_payload, ensure_ascii=False)
 
         system_message = (
-            "You are a social media and company specific news researcher/analyst tasked with analyzing social media posts, recent company news, and public sentiment for a specific company over the past week. You will be given a company's name your objective is to write a comprehensive long report detailing your analysis, insights, and implications for traders and investors on this company's current state after looking at social media and what people are saying about that company, analyzing sentiment data of what people feel each day about the company, and looking at recent company news. Use the get_news(query, start_date, end_date) tool to search for company-specific news and social media discussions. Try to look at all sources possible from social media to sentiment to news. Do not simply state the trends are mixed, provide detailed and finegrained analysis and insights that may help traders make decisions."
-            + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read.""",
+            "You are a social/news sentiment analyst reviewing the past week's chatter for a company."
+            " Use the provided payload (social signals + recent company news) to extract sentiment, momentum of sentiment, and notable narratives."
+            " Focus on signals that matter for trading decisions and map them into the structured output."
+            " If the payload contains errors, still infer what you can."
+            f"\n\n{base.output_format_instructions('Sentiment Analyst')}"
         )
 
         prompt = ChatPromptTemplate.from_messages(
@@ -25,39 +38,32 @@ def create_social_media_analyst(llm):
                 (
                     "system",
                     "You are a helpful AI assistant, collaborating with other assistants."
-                    " Use the provided tools to progress towards answering the question."
+                    " Do not call any tools; use the provided JSON only."
                     " If you are unable to fully answer, that's OK; another assistant with different tools"
                     " will help where you left off. Execute what you can to make progress."
-                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
-                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
-                    " You have access to the following tools: {tool_names}.\n{system_message}"
+                    " Respond ONLY with the required JSON object—no extra prose or FINAL TRANSACTION markers."
+                    " {system_message}"
                     "For your reference, the current date is {current_date}. The current company we want to analyze is {ticker}",
                 ),
+                ("human", "Summarize social/news signals for {ticker} using this one-shot JSON (no more tool calls): {news_json}"),
                 MessagesPlaceholder(variable_name="messages"),
             ]
         )
 
         prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
+        prompt = prompt.partial(news_json=news_json)
 
-        try:
-            chain = prompt | llm.bind_tools(tools)
-            tool_capable = True
-        except NotImplementedError:
-            chain = prompt | llm
-            tool_capable = False
-
-        result = chain.invoke(state["messages"])
-
-        report = ""
-
-        if not tool_capable or len(getattr(result, "tool_calls", []) or []) == 0:
-            report = result.content
+        chain = prompt | llm
+        result = await chain.ainvoke(state["messages"])
+        draft_report = result.content or ""
+        reviewed = await base.self_consistency_review(draft_report, "Social Media Analyst")
+        report = reviewed.content or draft_report
+        base.log_tool("Social", "Generated sentiment_report", ticker, f"{len(report)} chars")
 
         return {
-            "messages": [result],
+            "messages": [reviewed],
             "sentiment_report": report,
         }
 

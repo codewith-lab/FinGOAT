@@ -1,7 +1,6 @@
 // Trading Analysis API Service
 
-const rawApiUrl = import.meta.env.VITE_API_URL
-const API_BASE_URL = rawApiUrl ? rawApiUrl.replace(/\/$/, '') : ''
+const API_BASE_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 'http://localhost:3000'
 const TOKEN_STORAGE_KEY = 'fingoat_token'
 
 export interface AnalysisRequest {
@@ -31,6 +30,8 @@ export interface AnalysisTask {
     status: 'pending' | 'processing' | 'completed' | 'failed'
     decision?: TradingDecision
     analysis_report?: any
+    key_outputs?: Record<string, any>
+    stage_times?: Record<string, number>
     error?: string
     completed_at?: string
     processing_time_seconds?: number

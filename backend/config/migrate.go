@@ -15,7 +15,6 @@ func MigrateDB() {
 		&models.ExchangeRate{},
 		&models.TradingAnalysisTask{},
 		&models.TradingDecision{},
-		&models.RSSFeed{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)

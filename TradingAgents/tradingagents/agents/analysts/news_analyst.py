@@ -1,23 +1,35 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import time
 import json
-from tradingagents.agents.utils.agent_utils import get_news, get_global_news
-from tradingagents.dataflows.config import get_config
+from datetime import datetime, timedelta
+from tradingagents.agents.analysts.base_agent import BaseAgent
 
 
 def create_news_analyst(llm):
-    def news_analyst_node(state):
+    base = BaseAgent(llm)
+    news_tool = base.get_tools(["get_news"])[0]
+
+    async def news_analyst_node(state):
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
+        try:
+            start_date = (datetime.fromisoformat(str(current_date)) - timedelta(days=7)).date().isoformat()
+        except Exception:
+            start_date = str(current_date)
 
-        tools = [
-            get_news,
-            get_global_news,
-        ]
+        # Single news call per run to avoid duplicate tool invocations
+        base.log_tool("News", "Calling get_news", ticker, f"{start_date} -> {current_date}")
+        news_payload = await news_tool.ainvoke(
+            {"ticker": ticker, "start_date": start_date, "end_date": str(current_date)}
+        )
+        news_json = json.dumps(news_payload, ensure_ascii=False)
 
         system_message = (
-            "You are a news researcher tasked with analyzing recent news and trends over the past week. Please write a comprehensive report of the current state of the world that is relevant for trading and macroeconomics. Use the available tools: get_news(query, start_date, end_date) for company-specific or targeted news searches, and get_global_news(curr_date, look_back_days, limit) for broader macroeconomic news. Do not simply state the trends are mixed, provide detailed and finegrained analysis and insights that may help traders make decisions."
-            + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."""
+            "You are a news researcher assessing the past week's headlines relevant to the ticker."
+            " Use the provided news JSON to extract catalysts, macro context, and momentum of coverage."
+            " Translate the news impact into a clear trading leaning and populate the structured output."
+            " If the JSON contains errors, still summarize what is usable."
+            f"\n\n{base.output_format_instructions('News Analyst')}"
         )
 
         prompt = ChatPromptTemplate.from_messages(
@@ -25,38 +37,33 @@ def create_news_analyst(llm):
                 (
                     "system",
                     "You are a helpful AI assistant, collaborating with other assistants."
-                    " Use the provided tools to progress towards answering the question."
+                    " Do not call any tools; use the provided news JSON."
                     " If you are unable to fully answer, that's OK; another assistant with different tools"
                     " will help where you left off. Execute what you can to make progress."
-                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
-                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
-                    " You have access to the following tools: {tool_names}.\n{system_message}"
+                    " Respond ONLY with the required JSON object—no extra prose or FINAL TRANSACTION markers."
+                    " {system_message}"
                     "For your reference, the current date is {current_date}. We are looking at the company {ticker}",
                 ),
+                ("human", "Use this one-shot news payload (do not call tools again). Ticker: {ticker}. Window: {start_date} → {current_date}. JSON: {news_json}"),
                 MessagesPlaceholder(variable_name="messages"),
             ]
         )
 
         prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
+        prompt = prompt.partial(start_date=start_date)
+        prompt = prompt.partial(news_json=news_json)
 
-        try:
-            chain = prompt | llm.bind_tools(tools)
-            tool_capable = True
-        except NotImplementedError:
-            chain = prompt | llm
-            tool_capable = False
-        result = chain.invoke(state["messages"])
-
-        report = ""
-
-        if not tool_capable or len(getattr(result, "tool_calls", []) or []) == 0:
-            report = result.content
+        chain = prompt | llm
+        result = await chain.ainvoke(state["messages"])
+        draft_report = result.content or ""
+        reviewed = await base.self_consistency_review(draft_report, "News Analyst")
+        report = reviewed.content or draft_report
+        base.log_tool("News", "Generated news_report", ticker, f"{len(report)} chars window {start_date} -> {current_date}")
 
         return {
-            "messages": [result],
+            "messages": [reviewed],
             "news_report": report,
         }
 

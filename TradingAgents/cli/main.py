@@ -1,4 +1,5 @@
 from typing import Optional
+import sys
 import datetime
 import typer
 from pathlib import Path
@@ -8,6 +9,12 @@ from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Ensure local package imports work when running the CLI directly
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.live import Live
@@ -55,8 +62,6 @@ class MessageBuffer:
             "Bull Researcher": "pending",
             "Bear Researcher": "pending",
             "Research Manager": "pending",
-            # Trading Team
-            "Trader": "pending",
             # Risk Management Team
             "Risky Analyst": "pending",
             "Neutral Analyst": "pending",
@@ -71,7 +76,6 @@ class MessageBuffer:
             "news_report": None,
             "fundamentals_report": None,
             "investment_plan": None,
-            "trader_investment_plan": None,
             "final_trade_decision": None,
         }
 
@@ -112,7 +116,6 @@ class MessageBuffer:
                 "news_report": "News Analysis",
                 "fundamentals_report": "Fundamentals Analysis",
                 "investment_plan": "Research Team Decision",
-                "trader_investment_plan": "Trading Team Plan",
                 "final_trade_decision": "Portfolio Management Decision",
             }
             self.current_report = (
@@ -157,11 +160,6 @@ class MessageBuffer:
         if self.report_sections["investment_plan"]:
             report_parts.append("## Research Team Decision")
             report_parts.append(f"{self.report_sections['investment_plan']}")
-
-        # Trading Team Reports
-        if self.report_sections["trader_investment_plan"]:
-            report_parts.append("## Trading Team Plan")
-            report_parts.append(f"{self.report_sections['trader_investment_plan']}")
 
         # Portfolio Management Decision
         if self.report_sections["final_trade_decision"]:
@@ -629,23 +627,7 @@ def display_complete_report(final_state):
                 )
             )
 
-    # III. Trading Team Reports
-    if final_state.get("trader_investment_plan"):
-        console.print(
-            Panel(
-                Panel(
-                    Markdown(final_state["trader_investment_plan"]),
-                    title="Trader",
-                    border_style="blue",
-                    padding=(1, 2),
-                ),
-                title="III. Trading Team Plan",
-                border_style="yellow",
-                padding=(1, 2),
-            )
-        )
-
-    # IV. Risk Management Team Reports
+    # III. Risk Management Team Reports
     if final_state.get("risk_debate_state"):
         risk_reports = []
         risk_state = final_state["risk_debate_state"]
@@ -978,17 +960,6 @@ def run_analysis():
                         message_buffer.update_agent_status(
                             "Risky Analyst", "in_progress"
                         )
-
-                # Trading Team
-                if (
-                    "trader_investment_plan" in chunk
-                    and chunk["trader_investment_plan"]
-                ):
-                    message_buffer.update_report_section(
-                        "trader_investment_plan", chunk["trader_investment_plan"]
-                    )
-                    # Set first risk analyst to in_progress
-                    message_buffer.update_agent_status("Risky Analyst", "in_progress")
 
                 # Risk Management Team - Handle Risk Debate State
                 if "risk_debate_state" in chunk and chunk["risk_debate_state"]:

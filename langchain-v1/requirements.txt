@@ -20,6 +20,7 @@ typing-extensions>=4.14.0
 pandas>=2.3.0
 yfinance>=0.2.63
 stockstats>=0.6.5
+numpy>=1.26.0
 pytz>=2025.2
 requests>=2.32.4
 tqdm>=4.67.1
@@ -46,6 +47,7 @@ redis>=6.2.0
 chainlit>=2.5.5
 rich>=14.0.0
 questionary>=2.1.0
+mcp>=1.9.4
 
 # Utilities
 setuptools>=80.9.0

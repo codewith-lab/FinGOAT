@@ -21,6 +21,9 @@ type TradingAnalysisTask struct {
 	CompletedAt           *time.Time `json:"completed_at,omitempty"`
 	ProcessingTimeSeconds float64    `json:"processing_time_seconds,omitempty"`
 	Error                 string     `gorm:"type:text" json:"error,omitempty"`
+	AnalysisReport        map[string]interface{} `gorm:"-" json:"analysis_report,omitempty"`
+	KeyOutputs            map[string]interface{} `gorm:"-" json:"key_outputs,omitempty"`
+	StageTimes            map[string]float64     `gorm:"-" json:"stage_times,omitempty"`
 
 	// Relationship
 	Decision *TradingDecision `gorm:"foreignKey:TaskID;references:TaskID" json:"decision,omitempty"`

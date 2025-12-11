@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 from datetime import date
 from typing import Dict, Any, Tuple, List, Optional
+import asyncio
 
 from langgraph.prebuilt import ToolNode
 
@@ -29,7 +30,8 @@ from tradingagents.agents.utils.agent_utils import (
     get_news,
     get_insider_sentiment,
     get_insider_transactions,
-    get_global_news
+    get_global_news,
+    get_peer_companies,
 )
 
 from tradingagents.llm_provider import build_llm
@@ -75,7 +77,6 @@ class TradingAgentsGraph:
         # Initialize memories
         self.bull_memory = FinancialSituationMemory("bull_memory", self.config)
         self.bear_memory = FinancialSituationMemory("bear_memory", self.config)
-        self.trader_memory = FinancialSituationMemory("trader_memory", self.config)
         self.invest_judge_memory = FinancialSituationMemory("invest_judge_memory", self.config)
         self.risk_manager_memory = FinancialSituationMemory("risk_manager_memory", self.config)
 
@@ -90,7 +91,6 @@ class TradingAgentsGraph:
             self.tool_nodes,
             self.bull_memory,
             self.bear_memory,
-            self.trader_memory,
             self.invest_judge_memory,
             self.risk_manager_memory,
             self.conditional_logic,
@@ -143,6 +143,7 @@ class TradingAgentsGraph:
                     get_income_statement,
                 ]
             ),
+            # Valuation analyst prefetches data directly, no tool node needed
         }
 
     def propagate(self, company_name, trade_date):
@@ -156,20 +157,7 @@ class TradingAgentsGraph:
         )
         args = self.propagator.get_graph_args()
 
-        if self.debug:
-            # Debug mode with tracing
-            trace = []
-            for chunk in self.graph.stream(init_agent_state, **args):
-                if len(chunk["messages"]) == 0:
-                    pass
-                else:
-                    chunk["messages"][-1].pretty_print()
-                    trace.append(chunk)
-
-            final_state = trace[-1]
-        else:
-            # Standard mode without tracing
-            final_state = self.graph.invoke(init_agent_state, **args)
+        final_state = asyncio.run(self.propagate_async(init_agent_state, args))
 
         # Store current state for reflection
         self.curr_state = final_state
@@ -179,6 +167,19 @@ class TradingAgentsGraph:
 
         # Return decision and processed signal
         return final_state, self.process_signal(final_state["final_trade_decision"])
+
+    async def propagate_async(self, init_agent_state, args):
+        if self.debug:
+            trace = []
+            async for chunk in self.graph.astream(init_agent_state, **args):
+                if len(chunk["messages"]) == 0:
+                    pass
+                else:
+                    chunk["messages"][-1].pretty_print()
+                    trace.append(chunk)
+            return trace[-1]
+        else:
+            return await self.graph.ainvoke(init_agent_state, **args)
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to a JSON file."""
@@ -200,7 +201,6 @@ class TradingAgentsGraph:
                     "judge_decision"
                 ],
             },
-            "trader_investment_decision": final_state["trader_investment_plan"],
             "risk_debate_state": {
                 "risky_history": final_state["risk_debate_state"]["risky_history"],
                 "safe_history": final_state["risk_debate_state"]["safe_history"],
@@ -224,15 +224,6 @@ class TradingAgentsGraph:
 
     def reflect_and_remember(self, returns_losses):
         """Reflect on decisions and update memory based on returns."""
-        self.reflector.reflect_bull_researcher(
-            self.curr_state, returns_losses, self.bull_memory
-        )
-        self.reflector.reflect_bear_researcher(
-            self.curr_state, returns_losses, self.bear_memory
-        )
-        self.reflector.reflect_trader(
-            self.curr_state, returns_losses, self.trader_memory
-        )
         self.reflector.reflect_invest_judge(
             self.curr_state, returns_losses, self.invest_judge_memory
         )

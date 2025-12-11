@@ -2,8 +2,6 @@ package config
 
 import (
 	"log"
-	"os"
-	"strconv"
 
 	"github.com/spf13/viper"
 )
@@ -49,42 +47,6 @@ func InitConfig() {
 		log.Fatalf("Failed to unmarshal config: %v", err)
 	}
 
-	overrideWithEnv()
 	initDB()
 	initRedis()
-}
-
-// overrideWithEnv allows docker/k8s to inject connection info without changing config files.
-func overrideWithEnv() {
-	if v := os.Getenv("APP_PORT"); v != "" {
-		AppConfig.App.Port = v
-	}
-
-	if v := os.Getenv("DB_HOST"); v != "" {
-		AppConfig.Database.Host = v
-	}
-	if v := os.Getenv("DB_PORT"); v != "" {
-		AppConfig.Database.Port = v
-	}
-	if v := os.Getenv("DB_USER"); v != "" {
-		AppConfig.Database.User = v
-	}
-	if v := os.Getenv("DB_PASSWORD"); v != "" {
-		AppConfig.Database.Password = v
-	}
-	if v := os.Getenv("DB_NAME"); v != "" {
-		AppConfig.Database.Name = v
-	}
-
-	if v := os.Getenv("REDIS_ADDR"); v != "" {
-		AppConfig.Redis.Addr = v
-	}
-	if v := os.Getenv("REDIS_PASSWORD"); v != "" {
-		AppConfig.Redis.Password = v
-	}
-	if v := os.Getenv("REDIS_DB"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil {
-			AppConfig.Redis.DB = parsed
-		}
-	}
 }
