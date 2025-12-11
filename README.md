@@ -113,9 +113,11 @@ curl -X POST http://localhost:8001/api/v1/analyze \
 The response returns a `task_id`; poll `/api/v1/analysis/{task_id}` for the result.
 
 #### Screenshots
-![](static/login.png)
 
-![](static/dashboard.png)
+<img width="900" height="500" alt="image" src="https://github.com/user-attachments/assets/4dc3f039-051a-4510-a44f-7d33c38d4400" />
+
+
+<img width="900" height="500" alt="image" src="https://github.com/user-attachments/assets/db30f088-b0e0-41a2-a079-688490ae1c42" />
 
 
 ## FinGOAT Functional TODO List
