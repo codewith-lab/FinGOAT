@@ -66,6 +66,7 @@ go run main.go
 # curl http://localhost:3000/api/trading/health
 ```
 
+![](assets/appinfra.png)
 
 ### 前端配置 (TypeScript+Vite+React)
 ```bash

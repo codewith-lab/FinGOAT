@@ -18,6 +18,8 @@ git clone https://github.com/JerryLinyx/FinGOAT.git
 cd FinGOAT
 ```
 
+![](assets/appinfra.png)
+
 ### Backend Setup (Gin+GORM+PostgreSQL+Redis+Viper+JWT+Docker)
 
 #### Install dependencies
