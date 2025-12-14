@@ -152,141 +152,70 @@ The response returns a `task_id`; poll `/api/v1/analysis/{task_id}` for the resu
 
 ## Overview
 
-FinGOAT (Financial Graph-Orchestrated Agentic Trading) is a full-stack financial intelligence system that bridges the gap between modern LLM-based analysis and traditional CFA-aligned investment workflows. The system combines real-time data interpretation with rigorous financial theories and domain-specific judgment, mirroring how real investment teams operate with independent views, transparent scoring, and risk-driven decision processes.
+FinGOAT (Financial Graph-Orchestrated Agentic Trading) is a full-stack financial intelligence system that aligns modern LLM agents with CFA-style workflows. It uses a graph-orchestrated, asynchronous multi-agent design to keep analyst roles independent, scored, and risk-adjusted instead of forcing consensus. Fundamental analysis is grounded with RAG over real filings/transcripts, and outputs are persisted for auditability.
+
+**What makes it different**
+- Graph-orchestrated, asynchronous multi-agents (LangGraph) instead of linear chains, cutting latency and improving stability.
+- Quantitative conviction + risk adjustments inspired by PM/RM practice; decisions stay explainable and traceable.
+- Fundamentals agent with RAG over filings/transcripts; technical/news/sentiment agents stay independent.
+- Provider-flexible LLM layer (OpenAI/Anthropic/Google/DeepSeek/Aliyun) with local fallback via Ollama/vLLM.
+- Production-ready stack: Go (Gin+GORM+JWT) API gateway, FastAPI agent service, React/Vite frontend, PostgreSQL + Redis, Docker Compose/K8s, Nginx reverse proxy.
 
 ## Background
 
-### The Evolution of Financial Analysis
+### The evolution of LLMs in finance
+- LLMs are widely used for news interpretation, earnings summaries, sentiment, and fundamentals, but many pipelines remain opaque and slow.
+- Agent frameworks (LangChain/LangGraph, Dify, N8N, Coze) enable multi-role setups, yet real investment teams rely on independent views, scoring, and risk control.
+- FinGOAT targets this gap with graph-orchestrated, CFA-aligned multi-agents that stay auditable and latency-aware.
 
-- **LLMs in Finance**: Large Language Models are increasingly used to interpret financial news, fundamentals, earnings transcripts, and sentiment signals
-- **Agent Frameworks**: Recent frameworks (e.g., LangChain, Dify, N8N, Coze) demonstrate multi-role analyst pipelines using LLMs
-- **Modern Asset Management**: Real-time news interpretation, rigorous financial theories, and domain-specific judgment
-- **Real Investment Teams**: Independent views, transparent scoring, and risk-driven decision processes
+## Problem statement
+- **Transparency**: Reasoning chains are often opaque; hard to trace why a decision was made.
+- **Latency**: Sequential pipelines inflate end-to-end time; slow for interactive use.
+- **Stability**: Forcing consensus among heterogeneous agents can create unstable, low-trust outputs.
 
-FinGOAT aims to bridge this gap by providing **Graph-Orchestrated multi-Agents**, combining LLM-based analysis with a CFA-aligned, quantitatively structured, and transparent investment workflow.
+## Our solution
+- **Graph-orchestrated, asynchronous agents** (LangGraph) to cut critical-path latency and improve predictability.
+- **Quantitative conviction + risk adjustment** to aggregate heterogeneous signals into explainable BUY/SELL/HOLD calls.
+- **RAG-grounded fundamentals** to tie LLM reasoning to filings/transcripts instead of free-form generation.
+- **Provider-flexible + local models** (OpenAI/Anthropic/Google/DeepSeek/Aliyun; Ollama/vLLM) to balance cost/privacy/latency.
+- **Productionized stack** with Go API gateway, FastAPI agent service, React/Vite UI, PostgreSQL + Redis, Docker Compose/K8s, and Nginx as entry proxy.
 
-## Problem Statement
+### How it works (analysis flow)
+- Analysts (technical/news/sentiment/fundamentals) run asynchronously and keep their own views.
+- PM engine aggregates signals into BUY/SELL/HOLD with base conviction.
+- Risk manager adjusts conviction by company/valuation/sentiment/macro/disagreement factors.
+- Decision and full analysis report are persisted in PostgreSQL; Redis is used for caching; UI surfaces both headline and detailed JSON.
 
-Current multi-agent trading frameworks face several critical challenges:
-
-### Limited Transparency
-- Multi-stage interactions with ambiguous reasoning
-- Inconsistent agent opinions
-- Difficult to trace decision-making process
-
-### High Latency
-- Multi-turn sequential execution
-- Bottlenecks in agent coordination
-
-### Unstable Outcomes
-- "All agents must converge" assumption is unrealistic
-- Lack of robust disagreement handling
-
-### Reference: 
-- [Blackrock Alpha Agent](https://arxiv.org/pdf/2508.11152v1)
-- [Trading Agents](arxiv.org/pdf/2412.20138)
-
-## Our Solution
-
-### Multi-Agent Layer with COF + Self-Reflection
-
-**Key Improvements:**
-
-1. **Asynchronous Analyst Execution**
-   - Parallel processing of analyst agents
-   - Significant reduction in end-to-end runtime
-
-2. **Enhanced Prompt Engineering**
-   - Chain-of-Thought (COF) reasoning
-   - Self-reflection mechanisms
-
-3. **Streamlined, CFA-Consistent Investment Workflow**
-   - Aligned with professional investment analysis standards
-   - Transparent decision-making process
-
-4. **Quantitative and Factor-Based Scoring**
-   - Objective, measurable conviction scores
-   - Risk-adjusted recommendations
-
-### Quantitative Scoring via MCP Calling
-
-#### PM Engine
-- **Direction**: Buy/Sell/Hold recommendation
-- **Base Conviction**: Initial confidence score
-
-#### Risk Manager
-Adjusts convictions based on multiple risk factors:
-- Company-specific risk
-- Valuation uncertainty
-- Sentiment risk
-- Macro risk
-- Analyst disagreement
-
-### Sample Analysis Workflow
-
-The system provides comprehensive analysis across multiple dimensions:
-
-1. **Technical Analysis**: Chart patterns, momentum indicators, volume analysis
-2. **Social Media Sentiment**: Real-time sentiment from Twitter, Reddit, StockTwits
-3. **News Analysis**: Breaking news impact and sentiment
-4. **Fundamentals**: Financial statements, ratios, growth metrics
-5. **Valuation**: DCF, multiples, peer comparison
-6. **PM Engine**: Portfolio management recommendations
-7. **Risk Management**: Multi-factor risk assessment
-
-Example output for NVDA:
-- **Direction**: Buy
-- **Conviction**: +10%
-- **Key Outputs**: Detailed analysis from each agent with supporting evidence
-
-### Fundamentals Analyst's RAG Architecture
-
-The system processes various financial documents:
-- SEC 10-K filings with actual financial statements
-- Earnings transcripts from quarterly calls with management commentary
-- Analyst reports with price targets
-- Company investor presentations with actual numbers
-
-**RAG Pipeline:**
-```
-Financial Documents → Embeddings → ChromaDB → RAG Pipeline
-```
+### Fundamentals RAG
+- Sources: SEC 10-K, earnings call transcripts, analyst reports, investor presentations.
+- Pipeline: Financial docs → embeddings → ChromaDB → RAG prompt → grounded fundamentals signals (direction, key factors, risks).
 
 ## System Architecture
 
 ### Full Stack Components
 
 #### Frontend
-- **Framework**: Vite + React for UI
-- **Proxy**: Nginx for reverse proxy
-- **Features**: Real-time dashboard, analysis visualization, multi-LLM provider support
+- Vite + React UI, showing analysis status/results, provider/model controls.
+- Nginx reverse proxy for the SPA.
 
-#### Go Backend
-- **Router**: Gin with CORS support
-- **Authentication**: JWT for secure access
-- **Configuration**: Viper for flexible config management
-- **Database**: GORM for PostgreSQL ORM, Go-Redis for caching
+#### Go backend (API gateway)
+- Gin router with CORS; JWT auth; Viper config.
+- GORM + PostgreSQL for persistence; go-redis for cache/session.
 
-#### Database Layer
-- **PostgreSQL**: Primary data store for consistency
-- **Redis**: Caching layer for performance
-- **RSS Feeds**: Real-time article ingestion
+#### Python agent service
+- FastAPI + LangChain/LangGraph for graph-orchestrated agents.
+- Multi-LLM support (OpenAI/Anthropic/Google/DeepSeek/Aliyun, Ollama/vLLM).
 
-#### Python Backend
-- **API**: FastAPI for Agent Service
-- **Orchestration**: LangChain/LangGraph for agent coordination
-- **Multi-LLM Support**: OpenAI, Anthropic, Google, DeepSeek, Aliyun Bailian, local Ollama models
+#### Data layer
+- PostgreSQL for tasks/decisions/articles.
+- Redis for cache and future stream/event use.
+- RSS ingestion for news articles.
 
 ### Deployment
 
-**Containerization:**
-- Docker Compose for service isolation
-- Individual containers for frontend, backend, database, and agent services
-
-**Cloud Infrastructure:**
-- Deployed on GCP VM
-- Load balancing for high availability
-- Secrets management for API keys and credentials
+- Docker Compose for local dev/prod parity; Nginx as entry.
+- Kubernetes manifests (`k8s/`) for scaling, LB/Ingress, and health probes.
+- Secrets via env files or K8s Secrets; swap DB/Redis to managed services as needed.
 
 ## Model Zoo
 
@@ -315,15 +244,14 @@ The system supports multiple model APIs beyond OpenAI:
 
 | Model | Size | Ollama Command | Latency (Serial Mode) |
 |-------|------|----------------|----------------------|
-| Gemma 3 1B | 815MB | `ollama run gemma:3b` | 115.23s |
-| Gemma 3 4B | 3.3GB | `ollama run gemma:4b` | 320.50s |
-| Gemma 3 12B | 8.1GB | `ollama run gemma:12b` | 690.82s |
-| Gemma 3 27B | 17GB | `ollama run gemma:27b` | 1131.48s |
+| Gemma 3 1B | 815MB | `ollama run gemma3:1b` | 115.23s |
+| Gemma 3 4B | 3.3GB | `ollama run gemma3` | 320.50s |
+| Gemma 3 12B | 8.1GB | `ollama run gemma3:12b` | 690.82s |
+| Gemma 3 27B | 17GB | `ollama run gemma3:27b` | 1131.48s |
 
 **Key Insights:**
-- Smaller models provide lower latency
-- Local deployment ensures privacy and eliminates API costs
-- Trade-off between model capability and response time
+- Smaller models → lower latency; larger models → stronger reasoning.
+- Local inference preserves privacy and removes API cost; balance capability vs. response time per use case.
 
 ## Future Work
 
