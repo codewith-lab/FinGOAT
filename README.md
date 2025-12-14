@@ -27,7 +27,7 @@ This branch focuses on agent layer optimization and UI transparency
 
 ### Latency Reduction 
 - Latency gets reduced from 3-min to 1-min, 70% total reduction (measured end-to-end)
-  - 20% from asynchronous I/O concurrency of analyst agency execution 
+  - 20% from asynchronous I/O concurrency of analyst agent execution 
   - 50% from agent layer redesign
 
 ### Quantitative and Factor-Based Scoring
