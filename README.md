@@ -9,6 +9,10 @@ The stack includes a Go backend (Gin + GORM + PostgreSQL + Redis) and a TypeScri
 
 ![](assets/infra.png)
 
+
+**Tribute to the Original Project**
+Thanks to the [Tauric Research](https://github.com/TauricResearch) team for their multi-agent trading framework [TradingAgents](https://github.com/TauricResearch/TradingAgents)!
+
 ## Getting Started
 
 ### Quick Start
