@@ -14,6 +14,10 @@ The stack includes a Go backend (Gin + GORM + PostgreSQL + Redis) and a TypeScri
 
 Thanks to the [Tauric Research](https://github.com/TauricResearch) team for their multi-agent trading framework [TradingAgents](https://github.com/TauricResearch/TradingAgents)!
 
+## Deployment
+- Full guide: [DEPLOYMENT.md](./DEPLOYMENT.md)
+- Chinese version: [DEPLOYMENT-CN.md](./DEPLOYMENT-CN.md)
+
 ## Getting Started
 
 ### Quick Start
@@ -369,4 +373,3 @@ If you use FinGOAT in your research, please cite:
   url = {https://github.com/JerryLinyx/FinGOAT}
 }
 ```
-

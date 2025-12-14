@@ -13,6 +13,10 @@ FinGOAT 是一个全栈金融智能系统，融合了实时数据采集、图结
 
 感谢 [Tauric Research](https://github.com/TauricResearch) 团队的多智能体交易框架 [TradingAgents](https://github.com/TauricResearch/TradingAgents)！
 
+## 部署
+- 英文部署指南：[DEPLOYMENT.md](./DEPLOYMENT.md)
+- 中文部署指南：[DEPLOYMENT-CN.md](./DEPLOYMENT-CN.md)
+
 ## 快速开始
 
 ### 克隆仓库
